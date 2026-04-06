@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Safe Payout</title>
+
+<script src="https://cdn.jsdelivr.net/npm/ethers@6.10.0/dist/ethers.umd.min.js"></script>
+
+<style>
+body {background:#0b0f14;color:white;font-family:Arial;}
+.container {max-width:700px;margin:auto;padding:20px;}
+.card {background:#141a22;padding:20px;margin-top:20px;border-radius:12px;}
+button {width:100%;padding:10px;margin-top:10px;background:#00ffae;border:none;}
+</style>
+</head>
+
+<body>
+
+<div class="container">
+
+<h2>💸 Safe Payout Panel</h2>
+
+<div class="card">
+<button onclick="connect()">Connect Wallet</button>
+<div id="wallet"></div>
+</div>
+
+<div class="card">
+<h3>Check Tasks</h3>
+<button onclick="loadTasks()">Load Executable Tasks</button>
+<div id="tasks"></div>
+</div>
+
+</div>
+
+<script>
+
+// ===== CONFIG =====
+const CONTRACT = "0xC93f3483C514a9ba22CdF2240B32734a69Bf17a2";
+const SAFE = "0xC8DF3B516616800b2709F66e1bee7520aBAbD4E2";
+
+// ===== ABI =====
+const ABI = [
+  "function tasks(uint256) view returns(address,uint256,uint256,bool)"
+];
+
+let provider, signer, user;
+
+// ===== CONNECT =====
+async function connect(){
+
+  provider = new ethers.BrowserProvider(window.ethereum);
+
+  await provider.send("eth_requestAccounts", []);
+
+  signer = await provider.getSigner();
+
+  user = await signer.getAddress();
+
+  document.getElementById("wallet").innerText = user;
+}
+
+// ===== LOAD TASKS =====
+async function loadTasks(){
+
+  const contract = new ethers.Contract(CONTRACT, ABI, provider);
+
+  let html = "";
+
+  for(let i=0;i<10;i++){
+
+    try{
+
+      let t = await contract.tasks(i);
+
+      if(t[3]){ // executable = true
+
+        html += `
+        <div style="margin-bottom:20px;">
+        <b>Task #${i}</b><br>
+        Worker: ${t[0]}<br>
+        Reward: ${Number(ethers.formatUnits(t[1],6))} USDT<br>
+
+        <button onclick="payout('${t[0]}','${t[1]}')">
+        💸 Payout
+        </button>
+        </div>`;
+      }
+
+    }catch{}
+  }
+
+  document.getElementById("tasks").innerHTML = html;
+}
+
+// ===== PAYOUT =====
+async function payout(worker, amount){
+
+  try{
+
+    alert(
+`Send this transaction via Safe:
+
+To: ${worker}
+Amount: ${ethers.formatUnits(amount,6)} USDT
+
+Step:
+1. Open Safe
+2. New Transaction
+3. Paste data`
+    );
+
+  }catch(e){
+    alert(e.message);
+  }
+}
+
+</script>
+
+</body>
+</html>

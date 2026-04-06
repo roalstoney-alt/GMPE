@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Create Task</title>
+
+<!-- ✅ 稳定 ethers -->
+<script src="https://cdn.jsdelivr.net/npm/ethers@6.10.0/dist/ethers.umd.min.js"></script>
+
+<style>
+body {background:#0b0f14;color:white;font-family:Arial;}
+.container {max-width:700px;margin:auto;padding:20px;}
+.card {background:#141a22;padding:20px;margin-top:20px;border-radius:12px;}
+button {width:100%;padding:12px;margin-top:10px;background:#00ffae;border:none;}
+input {width:100%;padding:10px;margin-top:10px;border:none;border-radius:8px;}
+</style>
+</head>
+
+<body>
+
+<div class="container">
+
+<h2>📦 Create Task</h2>
+
+<div class="card">
+<div id="wallet">Connecting wallet...</div>
+</div>
+
+<div class="card">
+<h3>Create Task</h3>
+
+<!-- ✅ worker 自动填充且不可修改 -->
+<input id="worker" disabled>
+
+<input id="reward" placeholder="Reward (USDT, e.g. 1)">
+
+<button onclick="createTask()">Create Task</button>
+
+<div id="status"></div>
+</div>
+
+<div class="card">
+<h3>Tasks</h3>
+<button onclick="loadTasks()">Refresh</button>
+<div id="tasks"></div>
+</div>
+
+</div>
+
+<script>
+
+// ===== CONFIG =====
+const CONTRACT = "0xC93f3483C514a9ba22CdF2240B32734a69Bf17a2";
+
+// ===== ABI =====
+const ABI = [
+  "function createTask(address worker,uint256 reward)",
+  "function isWorker(address) view returns(bool)",
+  "function tasks(uint256) view returns(address,uint256,uint256,bool)"
+];
+
+let provider, signer, user;
+
+// ===== 自动初始化（关键） =====
+window.onload = async function(){
+
+  try{
+
+    if (!window.ethereum){
+      alert("Please open via localhost with MetaMask");
+      return;
+    }
+
+    provider = new ethers.BrowserProvider(window.ethereum);
+
+    // 不主动请求连接（继承已连接状态）
+    signer = await provider.getSigner();
+
+    user = await signer.getAddress();
+
+    document.getElementById("wallet").innerText =
+      "Connected: " + user;
+
+  }catch(e){
+    document.getElementById("wallet").innerText =
+      "⚠️ Wallet not connected (go back to Worker page)";
+  }
+
+  // ✅ 自动填 worker
+  const params = new URLSearchParams(window.location.search);
+  const worker = params.get("worker");
+
+  if(worker){
+    document.getElementById("worker").value = worker;
+  }else if(user){
+    document.getElementById("worker").value = user;
+  }
+
+  loadTasks();
+};
+
+// ===== CREATE TASK =====
+async function createTask(){
+
+  try{
+
+    if(!signer){
+      alert("Wallet not connected");
+      return;
+    }
+
+    const worker = document.getElementById("worker").value;
+    const rewardInput = document.getElementById("reward").value;
+
+    if(!worker || !rewardInput){
+      alert("Fill all fields");
+      return;
+    }
+
+    const contract = new ethers.Contract(CONTRACT, ABI, signer);
+
+    // 🔍 检查是否 stake
+    let ok = await contract.isWorker(worker);
+
+    if(!ok){
+      document.getElementById("status").innerText =
+        "❌ Worker not staked";
+      return;
+    }
+
+    let reward = ethers.parseUnits(rewardInput, 6);
+
+    document.getElementById("status").innerText =
+      "Creating task...";
+
+    let tx = await contract.createTask(worker, reward);
+
+    await tx.wait();
+
+    document.getElementById("status").innerText =
+      "✅ Task created";
+
+    loadTasks();
+
+  }catch(e){
+    console.error(e);
+    document.getElementById("status").innerText =
+      "❌ " + e.message;
+  }
+}
+
+// ===== LOAD TASKS =====
+async function loadTasks(){
+
+  try{
+
+    const contract = new ethers.Contract(CONTRACT, ABI, provider);
+
+    let html = "";
+    let found = false;
+
+    for(let i=0;i<20;i++){
+
+      try{
+
+        let t = await contract.tasks(i);
+
+        found = true;
+
+        html += `
+        <div style="margin-bottom:15px;">
+        Task #${i}<br>
+        Worker: ${t[0]}<br>
+        Reward: ${Number(ethers.formatUnits(t[1],6))} USDT<br>
+        Approvals: ${t[2]}<br>
+        Executable: ${t[3] ? "✅ YES" : "❌ NO"}<br>
+        </div>`;
+
+      }catch{
+        break;
+      }
+    }
+
+    if(!found){
+      html = "⚠️ No tasks yet";
+    }
+
+    document.getElementById("tasks").innerHTML = html;
+
+  }catch(e){
+    document.getElementById("tasks").innerText =
+      "❌ " + e.message;
+  }
+}
+
+</script>
+
+</body>
+</html>
