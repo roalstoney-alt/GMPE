@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Investor / Owner Panel</title>
+
+<script src="https://cdn.jsdelivr.net/npm/ethers@6.10.0/dist/ethers.umd.min.js"></script>
+
+<style>
+body {background:#0f172a;color:white;font-family:Arial;}
+.card {border:1px solid #334155;padding:12px;margin:10px;border-radius:10px;}
+button {margin-top:6px;padding:6px 10px;background:#00ffae;border:none;}
+</style>
+</head>
+
+<body>
+
+<h2>💰 Owner Payment Panel</h2>
+
+<div id="wallet"></div>
+<div id="balance"></div>
+
+<hr>
+
+<h3>Pending Payments</h3>
+<div id="requests"></div>
+
+<script>
+
+const CONTRACT = "0x6881Ad624D23bDC3e21b3B6dafD49C3E7f61BB4C";
+
+const ABI = [
+  "function withdraw(address payable to,uint256 amount)",
+  "function getBalance() view returns(uint256)"
+];
+
+let provider = new ethers.BrowserProvider(window.ethereum);
+let signer, user;
+
+/* ======================
+   INIT
+====================== */
+async function init(){
+
+  await provider.send("eth_requestAccounts", []);
+  signer = await provider.getSigner();
+  user = await signer.getAddress();
+
+  document.getElementById("wallet").innerText =
+    "Owner: " + user;
+
+  await loadBalance();
+  render();
+}
+
+/* ======================
+   LOAD BALANCE
+====================== */
+async function loadBalance(){
+  const c = new ethers.Contract(CONTRACT, ABI, provider);
+  const b = await c.getBalance();
+
+  document.getElementById("balance").innerText =
+    "Contract Balance: " + ethers.formatEther(b) + " POL";
+}
+
+/* ======================
+   GET TASK DATA
+====================== */
+function getState(){
+  return JSON.parse(localStorage.getItem("workerTask") || "{}");
+}
+
+/* ======================
+   PAY WORKER
+====================== */
+async function payWorker(){
+
+  let s = getState();
+
+  if(!s.worker || !s.proof){
+    alert("Invalid request");
+    return;
+  }
+
+  try{
+
+    const c = new ethers.Contract(CONTRACT, ABI, signer);
+
+    // 🔥 define payout amount manually (or map by taskId)
+    let amount;
+
+    if(s.taskId == 1) amount = "0.01";
+    if(s.taskId == 2) amount = "0.02";
+    if(s.taskId == 3) amount = "0.03";
+
+    const value = ethers.parseEther(amount);
+
+    document.getElementById("requests").innerHTML =
+      "⏳ Sending payment...";
+
+    const tx = await c.withdraw(s.worker, value);
+
+    await tx.wait();
+
+    document.getElementById("requests").innerHTML =
+      "✅ Payment sent";
+
+  }catch(e){
+    console.error(e);
+    document.getElementById("requests").innerHTML =
+      "❌ " + (e.reason || e.message);
+  }
+}
+
+/* ======================
+   RENDER
+====================== */
+function render(){
+
+  let s = getState();
+
+  let html = "";
+
+  if(s.status === "pending_payment"){
+
+    html += `<div class="card">
+      <b>Task ID:</b> ${s.taskId}<br>
+      <b>Worker:</b> ${s.worker}<br>
+      <b>Proof:</b> ${s.proof}<br>
+
+      <button onclick="payWorker()">Approve & Pay</button>
+    </div>`;
+
+  } else {
+
+    html = "No pending payment";
+
+  }
+
+  document.getElementById("requests").innerHTML = html;
+}
+
+init();
+
+</script>
+
+</body>
+</html>
