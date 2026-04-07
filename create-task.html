@@ -4,7 +4,6 @@
 <meta charset="UTF-8">
 <title>Create Task</title>
 
-<!-- ✅ 稳定 ethers -->
 <script src="https://cdn.jsdelivr.net/npm/ethers@6.10.0/dist/ethers.umd.min.js"></script>
 
 <style>
@@ -29,10 +28,8 @@ input {width:100%;padding:10px;margin-top:10px;border:none;border-radius:8px;}
 <div class="card">
 <h3>Create Task</h3>
 
-<!-- ✅ worker 自动填充且不可修改 -->
 <input id="worker" disabled>
-
-<input id="reward" placeholder="Reward (USDT, e.g. 1)">
+<input id="reward" placeholder="Reward (e.g. 1)">
 
 <button onclick="createTask()">Create Task</button>
 
@@ -50,32 +47,28 @@ input {width:100%;padding:10px;margin-top:10px;border:none;border-radius:8px;}
 <script>
 
 // ===== CONFIG =====
-const CONTRACT = "0x6881Ad624D23bDC3e21b3B6dafD49C3E7f61BB4C";
+const CONTRACT = "YOUR_NEW_CONTRACT_ADDRESS"; // 🔥 replace with your deployed contract
 
-// ===== ABI =====
+// ===== ABI (FINAL) =====
 const ABI = [
   "function createTask(address worker,uint256 reward)",
-  "function isWorker(address) view returns(bool)",
+  "function workerStake(address) view returns(uint256)",
   "function tasks(uint256) view returns(address,uint256,uint256,bool)"
 ];
 
 let provider, signer, user;
 
-// ===== 自动初始化（关键） =====
+// ===== INIT =====
 window.onload = async function(){
 
   try{
-
     if (!window.ethereum){
-      alert("Please open via localhost with MetaMask");
+      alert("Please open with MetaMask");
       return;
     }
 
     provider = new ethers.BrowserProvider(window.ethereum);
-
-    // 不主动请求连接（继承已连接状态）
     signer = await provider.getSigner();
-
     user = await signer.getAddress();
 
     document.getElementById("wallet").innerText =
@@ -83,10 +76,10 @@ window.onload = async function(){
 
   }catch(e){
     document.getElementById("wallet").innerText =
-      "⚠️ Wallet not connected (go back to Worker page)";
+      "⚠️ Wallet not connected";
   }
 
-  // ✅ 自动填 worker
+  // auto fill worker
   const params = new URLSearchParams(window.location.search);
   const worker = params.get("worker");
 
@@ -119,16 +112,17 @@ async function createTask(){
 
     const contract = new ethers.Contract(CONTRACT, ABI, signer);
 
-    // 🔍 检查是否 stake
-    let ok = await contract.isWorker(worker);
+    // ✅ CHECK STAKE (FIXED)
+    let stake = await contract.workerStake(worker);
 
-    if(!ok){
+    if(stake == 0n){
       document.getElementById("status").innerText =
         "❌ Worker not staked";
       return;
     }
 
-    let reward = ethers.parseUnits(rewardInput, 6);
+    // reward as integer (no USDT anymore)
+    let reward = ethers.parseUnits(rewardInput, 18);
 
     document.getElementById("status").innerText =
       "Creating task...";
@@ -145,7 +139,7 @@ async function createTask(){
   }catch(e){
     console.error(e);
     document.getElementById("status").innerText =
-      "❌ " + e.message;
+      "❌ " + (e.reason || e.message);
   }
 }
 
@@ -171,7 +165,7 @@ async function loadTasks(){
         <div style="margin-bottom:15px;">
         Task #${i}<br>
         Worker: ${t[0]}<br>
-        Reward: ${Number(ethers.formatUnits(t[1],6))} USDT<br>
+        Reward: ${Number(ethers.formatUnits(t[1],18))} POL<br>
         Approvals: ${t[2]}<br>
         Executable: ${t[3] ? "✅ YES" : "❌ NO"}<br>
         </div>`;
