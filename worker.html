@@ -179,20 +179,15 @@ async function preCheck(){
   }
 
   let chain = await window.ethereum.request({method:'eth_chainId'});
+
   if(chain !== "0x89"){
     alert("Switch to Polygon");
     return false;
   }
 
-  let balance = await getBalance();
-  if(balance < 1){
-    alert("Need at least 1 USDT");
-    return false;
-  }
-
+  // 🔥 不再检测USDT余额（放开入口）
   return true;
 }
-
 // ===== STAKE =====
 async function stake(){
 
