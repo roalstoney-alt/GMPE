@@ -151,7 +151,7 @@ async function stake(){
 
     setStatus("Staking POL...");
 
-    const tx = await contract.stakeNative({
+    const tx = await contract.stake({
       value: amount
     });
 
