@@ -10,8 +10,9 @@
 body {background:#0b0f14;color:white;font-family:Arial;}
 .container {max-width:700px;margin:auto;padding:20px;}
 .card {background:#141a22;padding:20px;margin-top:20px;border-radius:12px;}
-button {width:100%;padding:12px;margin-top:10px;background:#00ffae;border:none;}
+button {width:100%;padding:14px;margin-top:10px;background:#00ffae;border:none;border-radius:8px;}
 input {width:100%;padding:10px;margin-top:10px;border:none;border-radius:8px;}
+.status {margin-top:15px;font-weight:bold;}
 </style>
 </head>
 
@@ -28,12 +29,14 @@ input {width:100%;padding:10px;margin-top:10px;border:none;border-radius:8px;}
 <div class="card">
 <h3>Create Task</h3>
 
+<!-- worker is auto = connected wallet -->
 <input id="worker" disabled>
-<input id="reward" placeholder="Reward (e.g. 1)">
+
+<input id="reward" placeholder="Reward (e.g. 0.01)">
 
 <button onclick="createTask()">Create Task</button>
 
-<div id="status"></div>
+<div id="status" class="status"></div>
 </div>
 
 <div class="card">
@@ -47,8 +50,8 @@ input {width:100%;padding:10px;margin-top:10px;border:none;border-radius:8px;}
 <script>
 
 // ===== CONFIG =====
-const CONTRACT = ethers.getAddress("0x6881Ad624D23bDC3e21b3B6dafD49C3E7f61BB4C");
-// ===== ABI (FINAL) =====
+const CONTRACT = ethers.getAddress("0x6881Ad624D23bDC3e21b3B6dafD49C3E7f61BB4C"); // 🔥 your contract
+
 const ABI = [
   "function createTask(address worker,uint256 reward)",
   "function workerStake(address) view returns(uint256)",
@@ -62,30 +65,24 @@ window.onload = async function(){
 
   try{
     if (!window.ethereum){
-      alert("Please open with MetaMask");
+      alert("Please open in MetaMask");
       return;
     }
 
     provider = new ethers.BrowserProvider(window.ethereum);
+    await provider.send("eth_requestAccounts", []);
+
     signer = await provider.getSigner();
     user = await signer.getAddress();
 
     document.getElementById("wallet").innerText =
       "Connected: " + user;
 
+    document.getElementById("worker").value = user;
+
   }catch(e){
     document.getElementById("wallet").innerText =
-      "⚠️ Wallet not connected";
-  }
-
-  // auto fill worker
-  const params = new URLSearchParams(window.location.search);
-  const worker = params.get("worker");
-
-  if(worker){
-    document.getElementById("worker").value = worker;
-  }else if(user){
-    document.getElementById("worker").value = user;
+      "❌ Wallet not connected";
   }
 
   loadTasks();
@@ -97,35 +94,38 @@ async function createTask(){
   try{
 
     if(!signer){
-      alert("Wallet not connected");
+      alert("Connect wallet first");
       return;
     }
 
-    const worker = document.getElementById("worker").value;
     const rewardInput = document.getElementById("reward").value;
 
-    if(!worker || !rewardInput){
-      alert("Fill all fields");
+    if(!rewardInput){
+      alert("Enter reward");
       return;
     }
 
     const contract = new ethers.Contract(CONTRACT, ABI, signer);
 
-    // ✅ CHECK STAKE (FIXED)
+    // 🔥 FORCE worker = current wallet
+    const worker = user;
+
+    // 🔥 CHECK STAKE (must be > 0)
     let stake = await contract.workerStake(worker);
 
-    if(stake == 0n){
+    if(stake === 0n){
       document.getElementById("status").innerText =
-        "❌ Worker not staked";
+        "❌ You must stake first";
       return;
     }
 
-    // reward as integer (no USDT anymore)
-    let reward = ethers.parseUnits(rewardInput, 18);
+    // 🔥 reward in POL
+    let reward = ethers.parseEther(rewardInput);
 
     document.getElementById("status").innerText =
       "Creating task...";
 
+    // 🔥 critical: worker = msg.sender
     let tx = await contract.createTask(worker, reward);
 
     await tx.wait();
@@ -137,6 +137,7 @@ async function createTask(){
 
   }catch(e){
     console.error(e);
+
     document.getElementById("status").innerText =
       "❌ " + (e.reason || e.message);
   }
@@ -164,7 +165,7 @@ async function loadTasks(){
         <div style="margin-bottom:15px;">
         Task #${i}<br>
         Worker: ${t[0]}<br>
-        Reward: ${Number(ethers.formatUnits(t[1],18))} POL<br>
+        Reward: ${Number(ethers.formatEther(t[1]))} POL<br>
         Approvals: ${t[2]}<br>
         Executable: ${t[3] ? "✅ YES" : "❌ NO"}<br>
         </div>`;
