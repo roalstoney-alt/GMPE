@@ -2,163 +2,195 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Worker Portal</title>
-
+<title>Worker Task System</title>
 <script src="https://cdn.jsdelivr.net/npm/ethers@6.10.0/dist/ethers.umd.min.js"></script>
 
 <style>
-body {background:#0b0f14;color:white;font-family:Arial;}
-.container {max-width:700px;margin:auto;padding:20px;}
-.card {background:#141a22;padding:20px;margin-top:20px;border-radius:12px;}
-button {width:100%;padding:14px;margin-top:10px;background:#00ffae;border:none;border-radius:8px;}
-.status {margin-top:10px;font-weight:bold;}
-.task {background:#1c2530;padding:15px;margin-top:10px;border-radius:8px;}
+body {background:#0f172a;color:white;font-family:Arial;}
+.card {border:1px solid #334155;padding:12px;margin:10px;border-radius:10px;}
+button {margin-top:6px;padding:6px 10px;}
 </style>
 </head>
 
 <body>
 
-<div class="container">
-
-<h2>👷 Worker Portal</h2>
-
-<div class="card">
-<div id="wallet">Connecting wallet...</div>
+<h2>Worker Task Portal</h2>
+<div id="wallet"></div>
 <div id="stakeStatus"></div>
-</div>
 
-<div class="card">
-<h3>📋 Available Tasks</h3>
+<hr>
+
+<h3>Select Task</h3>
 <div id="tasks"></div>
-</div>
-
-</div>
 
 <script>
 
-// ===== CONFIG =====
 const CONTRACT = "0x6881Ad624D23bDC3e21b3B6dafD49C3E7f61BB4C";
 
 const ABI = [
   "function workerStake(address) view returns(uint256)"
 ];
 
-// ===== MOCK TASK DATA (can replace with backend later) =====
-let TASKS = [
-  { id: 1, desc: "Take photo of location", reward: "0.01" },
-  { id: 2, desc: "Upload short video", reward: "0.02" }
-];
+let provider = new ethers.BrowserProvider(window.ethereum);
+let signer, user;
 
-let provider, signer, user;
+/* ======================
+   INIT
+====================== */
+async function init(){
 
-// ===== INIT =====
-window.onload = async function(){
+  await provider.send("eth_requestAccounts", []);
+  signer = await provider.getSigner();
+  user = await signer.getAddress();
 
-  try{
-    provider = new ethers.BrowserProvider(window.ethereum);
-    await provider.send("eth_requestAccounts", []);
-    signer = await provider.getSigner();
-    user = await signer.getAddress();
+  document.getElementById("wallet").innerText =
+    "Wallet: " + user;
 
-    document.getElementById("wallet").innerText =
-      "Wallet: " + user;
-
-    await checkStake();
-    renderTasks();
-
-  }catch(e){
-    document.getElementById("wallet").innerText =
-      "❌ Wallet not connected";
-  }
-};
-
-// ===== CHECK STAKE =====
-async function checkStake(){
-
-  const contract = new ethers.Contract(CONTRACT, ABI, provider);
-
-  let stake = await contract.workerStake(user);
-
-  if(stake == 0n){
-    document.getElementById("stakeStatus").innerHTML =
-      "❌ Not staked — please stake first";
-  } else {
-    document.getElementById("stakeStatus").innerHTML =
-      "✅ Stake detected: " + ethers.formatEther(stake) + " POL";
-  }
+  await checkStake();
+  render();
 }
 
-// ===== RENDER TASKS =====
-function renderTasks(){
+/* ======================
+   STAKE CHECK
+====================== */
+async function checkStake(){
+  const c = new ethers.Contract(CONTRACT, ABI, provider);
+  const s = await c.workerStake(user);
 
+  document.getElementById("stakeStatus").innerText =
+    s > 0n ? "✅ Staked" : "❌ Not Staked";
+}
+
+/* ======================
+   TASKS (FIXED)
+====================== */
+const TASKS = [
+  { id: 1, name: "Task 1 - Photo", reward: "0.01" },
+  { id: 2, name: "Task 2 - Video", reward: "0.02" },
+  { id: 3, name: "Task 3 - Survey", reward: "0.03" }
+];
+
+/* ======================
+   STORAGE
+====================== */
+function getState(){
+  return JSON.parse(localStorage.getItem("workerTask") || "{}");
+}
+
+function saveState(s){
+  localStorage.setItem("workerTask", JSON.stringify(s));
+}
+
+/* ======================
+   SELECT TASK
+====================== */
+async function selectTask(id){
+
+  const c = new ethers.Contract(CONTRACT, ABI, provider);
+  const stake = await c.workerStake(user);
+
+  if(stake == 0n){
+    alert("Stake required");
+    return;
+  }
+
+  const msg = `SELECT:${id}:${user}:${Date.now()}`;
+  const sig = await signer.signMessage(msg);
+
+  const state = {
+    taskId: id,
+    worker: user,
+    signature: sig,
+    status: "selected"
+  };
+
+  saveState(state);
+  render();
+}
+
+/* ======================
+   UPLOAD PROOF
+====================== */
+function uploadProof(){
+
+  let s = getState();
+
+  const file = document.getElementById("proof").files[0];
+  if(!file) return alert("Select file");
+
+  s.proof = file.name;
+  s.status = "submitted";
+
+  saveState(s);
+  render();
+}
+
+/* ======================
+   REQUEST PAYMENT
+====================== */
+async function requestPayment(){
+
+  let s = getState();
+
+  const msg = `PAY:${s.taskId}:${user}:${s.proof}:${Date.now()}`;
+  const sig = await signer.signMessage(msg);
+
+  s.paySig = sig;
+  s.status = "pending_payment";
+
+  saveState(s);
+  render();
+}
+
+/* ======================
+   RENDER
+====================== */
+function render(){
+
+  let s = getState();
   let html = "";
 
   TASKS.forEach(t => {
 
-    html += `
-    <div class="task">
-      <b>Task #${t.id}</b><br>
-      ${t.desc}<br>
-      Reward: ${t.reward} POL<br>
-      <button onclick="acceptTask(${t.id})">Accept Task</button>
-      <div id="status-${t.id}" class="status"></div>
-    </div>
-    `;
+    html += `<div class="card">
+      <b>${t.name}</b><br>
+      Reward: ${t.reward} ETH<br>`;
+
+    // no task selected
+    if(!s.taskId){
+      html += `<button onclick="selectTask(${t.id})">Select</button>`;
+    }
+
+    // selected task
+    if(s.taskId === t.id && s.worker === user){
+
+      html += `<br>✅ Selected<br>Status: ${s.status}<br>`;
+
+      if(s.status === "selected"){
+        html += `
+          <input type="file" id="proof">
+          <button onclick="uploadProof()">Upload Proof</button>
+        `;
+      }
+
+      if(s.status === "submitted"){
+        html += `
+          <button onclick="requestPayment()">Request Payment</button>
+        `;
+      }
+
+      if(s.status === "pending_payment"){
+        html += `<br>💰 Waiting payment`;
+      }
+    }
+
+    html += `</div>`;
   });
 
   document.getElementById("tasks").innerHTML = html;
 }
 
-// ===== ACCEPT TASK (SIGNATURE) =====
-async function acceptTask(taskId){
-
-  try{
-
-    const contract = new ethers.Contract(CONTRACT, ABI, provider);
-
-    let stake = await contract.workerStake(user);
-
-    if(stake == 0n){
-      document.getElementById(`status-${taskId}`).innerText =
-        "❌ Stake required";
-      return;
-    }
-
-    const task = TASKS.find(t => t.id === taskId);
-
-    const message = `
-Task ID: ${task.id}
-Description: ${task.desc}
-Reward: ${task.reward} POL
-Worker: ${user}
-`;
-
-    const signature = await signer.signMessage(message);
-
-    const recovered = ethers.verifyMessage(message, signature);
-
-    if(recovered.toLowerCase() === user.toLowerCase()){
-
-      document.getElementById(`status-${taskId}`).innerText =
-        "✅ Task accepted & signed";
-
-      console.log({
-        taskId: task.id,
-        worker: user,
-        signature: signature
-      });
-
-    } else {
-      document.getElementById(`status-${taskId}`).innerText =
-        "❌ Signature failed";
-    }
-
-  }catch(e){
-    console.error(e);
-    document.getElementById(`status-${taskId}`).innerText =
-      "❌ " + (e.message);
-  }
-}
+init();
 
 </script>
 
