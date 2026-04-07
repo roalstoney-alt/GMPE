@@ -92,9 +92,11 @@
 <script>
 
 // ===== CONFIG (CHECKSUM FIXED) =====
-const CONTRACT = ethers.getAddress("0xC93f3483C514a9ba22CdF2240B32734a69Bf17a2");
-const USDT = ethers.getAddress("0xC2132D05D31c914a87C6611C10748AaCBdA6C62");
+const CONTRACT_RAW = "0xC93f3483C514a9ba22CdF2240B32734a69Bf17a2";
+const USDT_RAW = "0xC2132D05D31c914a87C6611C10748AaCBdA6C62";
 
+const CONTRACT = CONTRACT_RAW.toLowerCase();
+const USDT = USDT_RAW.toLowerCase();
 const ABI = [
   "function stakeFund(uint256 amount)",
   "function tasks(uint256) view returns(address,uint256,uint256,bool)"
