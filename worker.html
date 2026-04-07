@@ -64,10 +64,9 @@
 
         <div class="card">
 <h2>🔥 Start</h2>
-<button class="btn-primary" onclick="showPortal()">🚀 Start Earning Now</button>
-</div>
 
-<div id="portal" style="display:none;">
+
+<h1>👷 Worker Portal</h1>
 
 <div class="card">
 <h3>Step 1: Connect Wallet</h3>
@@ -79,25 +78,22 @@
 <div class="card">
 <h3>Step 2: Stake 1 USDT</h3>
 <button id="stakeBtn" class="btn-primary" onclick="stake()">Stake & Activate</button>
-<div id="stakeStatus" class="status-msg"></div>
+<div id="status" class="status"></div>
 </div>
 
 <div class="card">
 <h3>Step 3: Tasks</h3>
-<button class="btn-secondary" onclick="loadTasks()">Refresh Tasks</button>
+<button class="btn-secondary" onclick="loadTasks()">Load Tasks</button>
 <div id="tasks"></div>
-</div>
-
 </div>
 
 </div>
 
 <script>
 
-// ===== CONFIG =====
+// ===== CONFIG (CHECKSUM FIXED) =====
 const USDT = "0xC2132D05D31c914a87C6611C10748AaCBdA6C62";
-const SAFE = "0xC8DF3B516616800b2709F66e1bee7520aBAbD4E2";
-const CONTRACT = "0xC93f3483C514a9ba22CdF2240B32734a69Bf17a2";
+const CONTRACT = "0xC93f3483C514A9Ba22CdF2240B32734A69Bf17A2";
 
 const ABI = [
   "function stakeFund(uint256 amount)",
@@ -106,38 +102,22 @@ const ABI = [
 
 let provider, signer, user;
 
-// ===== UI =====
-function showPortal(){
-  document.getElementById("portal").style.display="block";
-}
-
 // ===== CONNECT =====
 async function connect(){
-
   try{
-    if(!window.ethereum){
-      alert("Install MetaMask");
-      return;
-    }
-
     provider = new ethers.BrowserProvider(window.ethereum);
     await provider.send("eth_requestAccounts", []);
-
     signer = await provider.getSigner();
     user = await signer.getAddress();
 
-    let chain = await window.ethereum.request({method:'eth_chainId'});
-    let isPolygon = chain === "0x89";
-
-    let balance = await getBalance();
+    const chain = await window.ethereum.request({method:'eth_chainId'});
 
     document.getElementById("wallet").innerHTML =
       `Wallet: ${user.slice(0,6)}...${user.slice(-4)}<br>
-       Network: ${isPolygon?"Polygon ✅":"Wrong ❌"}<br>
-       USDT: $${balance.toFixed(2)}`;
+       Network: ${chain==="0x89"?"Polygon ✅":"Wrong ❌"}`;
 
   }catch(e){
-    alert(e.message);
+    showError(e);
   }
 }
 
@@ -148,106 +128,63 @@ async function switchPolygon(){
       method:"wallet_switchEthereumChain",
       params:[{chainId:"0x89"}]
     });
-  }catch(e){
-    alert("Switch network manually");
-  }
-}
-
-// ===== BALANCE =====
-async function getBalance(){
-  try{
-    const contract = new ethers.Contract(
-      USDT,
-      ["function balanceOf(address) view returns(uint256)"],
-      provider
-    );
-
-    let bal = await contract.balanceOf(user);
-    return Number(ethers.formatUnits(bal,6));
-
   }catch{
-    return 0;
+    alert("Switch manually in MetaMask");
   }
 }
 
-// ===== PRECHECK =====
-async function preCheck(){
-
-  if(!signer){
-    alert("Connect wallet first");
-    return false;
-  }
-
-  let chain = await window.ethereum.request({method:'eth_chainId'});
-
-  if(chain !== "0x89"){
-    alert("Switch to Polygon");
-    return false;
-  }
-
-  // 🔥 不再检测USDT余额（放开入口）
-  return true;
-}
 // ===== STAKE =====
 async function stake(){
 
+  const btn = document.getElementById("stakeBtn");
+
   try{
+    if(!signer) throw new Error("Connect wallet first");
 
-    let ok = await preCheck();
-    if(!ok) return;
+    const chain = await window.ethereum.request({method:'eth_chainId'});
+    if(chain !== "0x89") throw new Error("Switch to Polygon first");
 
-    const btn = document.getElementById("stakeBtn");
     btn.disabled = true;
     btn.innerText = "Processing...";
 
+    const amount = ethers.parseUnits("1",6);
+
+    // ===== APPROVE =====
+    setStatus("Step 1: Approving USDT...");
     const token = new ethers.Contract(
       USDT,
-      ["function transfer(address,uint256) returns(bool)"],
+      ["function approve(address,uint256) returns(bool)"],
       signer
     );
 
-    let amount = ethers.parseUnits("1",6);
-
-    document.getElementById("stakeStatus").innerText =
-      "Sending USDT...";
-
-    let tx1 = await token.transfer(SAFE, amount);
+    const tx1 = await token.approve(CONTRACT, amount);
     await tx1.wait();
 
-    document.getElementById("stakeStatus").innerText =
-      "Activating...";
-
+    // ===== STAKE =====
+    setStatus("Step 2: Staking...");
     const contract = new ethers.Contract(CONTRACT, ABI, signer);
 
-    let tx2 = await contract.stakeFund(amount);
+    const tx2 = await contract.stakeFund(amount);
     await tx2.wait();
 
-    document.getElementById("stakeStatus").innerText =
-      "✅ Activated! Redirecting...";
+    setStatus("✅ Activated! Redirecting...", "success");
 
     setTimeout(()=>{
       window.location.href = `create-task.html?worker=${user}`;
-    },1500);
+    },1200);
 
   }catch(e){
-
-    document.getElementById("stakeStatus").innerText =
-      "❌ " + e.message;
-
-    document.getElementById("stakeBtn").disabled=false;
-    document.getElementById("stakeBtn").innerText="Retry Stake";
+    showError(e);
+    btn.disabled = false;
+    btn.innerText = "Retry Stake";
   }
 }
 
-// ===== TASK LOAD =====
+// ===== LOAD TASKS =====
 async function loadTasks(){
 
   try{
-
-    if(!provider){
-      alert("Connect wallet first");
-      return;
-    }
+    if(!provider) throw new Error("Connect wallet first");
 
     const contract = new ethers.Contract(CONTRACT, ABI, provider);
 
@@ -257,8 +194,8 @@ async function loadTasks(){
       try{
         let t = await contract.tasks(i);
 
-        html+=`
-        <div class="task">
+        html += `
+        <div class="card">
         Task #${i}<br>
         Reward: ${Number(ethers.formatUnits(t[1],6))} USDT<br>
         Status: ${t[3]?"✅ Available":"⏳ Pending"}
@@ -272,8 +209,20 @@ async function loadTasks(){
       html || "No tasks yet";
 
   }catch(e){
-    document.getElementById("tasks").innerText = e.message;
+    showError(e);
   }
+}
+
+// ===== UI =====
+function setStatus(msg, type=""){
+  const el = document.getElementById("status");
+  el.className = "status " + type;
+  el.innerText = msg;
+}
+
+function showError(e){
+  console.error(e);
+  setStatus("❌ " + (e.reason || e.message), "error");
 }
 
 </script>
