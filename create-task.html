@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Create Task</title>
+<title>Create Task DEBUG</title>
 
 <script src="https://cdn.jsdelivr.net/npm/ethers@6.10.0/dist/ethers.umd.min.js"></script>
 
@@ -10,9 +10,12 @@
 body {background:#0b0f14;color:white;font-family:Arial;}
 .container {max-width:700px;margin:auto;padding:20px;}
 .card {background:#141a22;padding:20px;margin-top:20px;border-radius:12px;}
-button {width:100%;padding:14px;margin-top:10px;background:#00ffae;border:none;border-radius:8px;}
-input {width:100%;padding:10px;margin-top:10px;border:none;border-radius:8px;}
-.status {margin-top:15px;font-weight:bold;}
+button {width:100%;padding:14px;margin-top:10px;background:#00ffae;border:none;}
+input {width:100%;padding:10px;margin-top:10px;}
+.log {background:#000;padding:10px;margin-top:15px;height:250px;overflow:auto;font-size:12px;}
+.ok {color:#00ffae;}
+.err {color:#ff4d4f;}
+.warn {color:#ffaa00;}
 </style>
 </head>
 
@@ -20,170 +23,138 @@ input {width:100%;padding:10px;margin-top:10px;border:none;border-radius:8px;}
 
 <div class="container">
 
-<h2>📦 Create Task</h2>
+<h2>🧪 Create Task DEBUG</h2>
 
 <div class="card">
-<div id="wallet">Connecting wallet...</div>
+<div id="wallet"></div>
 </div>
 
 <div class="card">
-<h3>Create Task</h3>
-
-<!-- worker is auto = connected wallet -->
-<input id="worker" disabled>
-
 <input id="reward" placeholder="Reward (e.g. 0.01)">
-
-<button onclick="createTask()">Create Task</button>
-
-<div id="status" class="status"></div>
+<button onclick="runDebug()">Run Debug CreateTask</button>
 </div>
 
-<div class="card">
-<h3>Tasks</h3>
-<button onclick="loadTasks()">Refresh</button>
-<div id="tasks"></div>
-</div>
+<div id="log" class="log"></div>
 
 </div>
 
 <script>
 
-// ===== CONFIG =====
-const CONTRACT = ethers.getAddress("0x6881Ad624D23bDC3e21b3B6dafD49C3E7f61BB4C"); // 🔥 your contract
+const CONTRACT = "0x6881Ad624D23bDC3e21b3B6dafD49C3E7f61BB4C";
 
 const ABI = [
-  "function createTask(address worker,uint256 reward)",
-  "function workerStake(address) view returns(uint256)",
-  "function tasks(uint256) view returns(address,uint256,uint256,bool)"
+  "function createTask(address,uint256)",
+  "function workerStake(address) view returns(uint256)"
 ];
 
 let provider, signer, user;
+
+function log(msg, type=""){
+  const el = document.getElementById("log");
+  el.innerHTML += `<div class="${type}">▶ ${msg}</div>`;
+  el.scrollTop = el.scrollHeight;
+  console.log(msg);
+}
 
 // ===== INIT =====
 window.onload = async function(){
 
   try{
-    if (!window.ethereum){
-      alert("Please open in MetaMask");
-      return;
-    }
-
     provider = new ethers.BrowserProvider(window.ethereum);
     await provider.send("eth_requestAccounts", []);
-
     signer = await provider.getSigner();
     user = await signer.getAddress();
 
     document.getElementById("wallet").innerText =
-      "Connected: " + user;
-
-    document.getElementById("worker").value = user;
+      "Wallet: " + user;
 
   }catch(e){
-    document.getElementById("wallet").innerText =
-      "❌ Wallet not connected";
+    log(e.message, "err");
   }
-
-  loadTasks();
 };
 
-// ===== CREATE TASK =====
-async function createTask(){
+// ===== DEBUG RUN =====
+async function runDebug(){
+
+  document.getElementById("log").innerHTML = "";
 
   try{
 
-    if(!signer){
-      alert("Connect wallet first");
-      return;
-    }
+    if(!signer) throw new Error("Wallet not connected");
 
-    const rewardInput = document.getElementById("reward").value;
-
-    if(!rewardInput){
-      alert("Enter reward");
-      return;
-    }
+    log("=== START DEBUG ===");
 
     const contract = new ethers.Contract(CONTRACT, ABI, signer);
 
-    // 🔥 FORCE worker = current wallet
-    const worker = user;
+    log("Contract: " + CONTRACT);
 
-    // 🔥 CHECK STAKE (must be > 0)
-    let stake = await contract.workerStake(worker);
+    // 🔍 CHECK CODE EXISTS
+    const code = await provider.getCode(CONTRACT);
+    log("Contract code length: " + code.length);
+
+    if(code === "0x"){
+      log("❌ CONTRACT NOT FOUND", "err");
+      return;
+    } else {
+      log("✅ Contract exists", "ok");
+    }
+
+    // 🔍 CHECK STAKE
+    const stake = await contract.workerStake(user);
+    log("Stake value: " + stake);
 
     if(stake === 0n){
-      document.getElementById("status").innerText =
-        "❌ You must stake first";
+      log("❌ NOT STAKED", "err");
+      return;
+    } else {
+      log("✅ Stake OK", "ok");
+    }
+
+    // 🔍 REWARD
+    const rewardInput = document.getElementById("reward").value;
+
+    if(!rewardInput){
+      throw new Error("Enter reward");
+    }
+
+    const reward = ethers.parseEther(rewardInput);
+    log("Reward parsed: " + reward);
+
+    // 🔍 STATIC CALL FIRST (IMPORTANT)
+    try{
+      await contract.createTask.staticCall(user, reward);
+      log("✅ Static call passed (no revert)", "ok");
+    }catch(e){
+      log("❌ STATIC CALL FAILED", "err");
+      log(e.reason || e.message, "err");
       return;
     }
 
-    // 🔥 reward in POL
-    let reward = ethers.parseEther(rewardInput);
+    // 🔥 REAL TX
+    log("Sending transaction...");
 
-    document.getElementById("status").innerText =
-      "Creating task...";
+    const tx = await contract.createTask(user, reward);
 
-    // 🔥 critical: worker = msg.sender
-    let tx = await contract.createTask(worker, reward);
+    log("TX hash: " + tx.hash);
 
     await tx.wait();
 
-    document.getElementById("status").innerText =
-      "✅ Task created";
-
-    loadTasks();
+    log("🎉 SUCCESS — TASK CREATED", "ok");
 
   }catch(e){
+
+    log("❌ ERROR OCCURRED", "err");
+
+    if(e.reason){
+      log("Reason: " + e.reason, "err");
+    }
+
+    if(e.data){
+      log("Data: " + e.data, "warn");
+    }
+
+    log(e.message, "err");
     console.error(e);
-
-    document.getElementById("status").innerText =
-      "❌ " + (e.reason || e.message);
-  }
-}
-
-// ===== LOAD TASKS =====
-async function loadTasks(){
-
-  try{
-
-    const contract = new ethers.Contract(CONTRACT, ABI, provider);
-
-    let html = "";
-    let found = false;
-
-    for(let i=0;i<20;i++){
-
-      try{
-
-        let t = await contract.tasks(i);
-
-        found = true;
-
-        html += `
-        <div style="margin-bottom:15px;">
-        Task #${i}<br>
-        Worker: ${t[0]}<br>
-        Reward: ${Number(ethers.formatEther(t[1]))} POL<br>
-        Approvals: ${t[2]}<br>
-        Executable: ${t[3] ? "✅ YES" : "❌ NO"}<br>
-        </div>`;
-
-      }catch{
-        break;
-      }
-    }
-
-    if(!found){
-      html = "⚠️ No tasks yet";
-    }
-
-    document.getElementById("tasks").innerHTML = html;
-
-  }catch(e){
-    document.getElementById("tasks").innerText =
-      "❌ " + e.message;
   }
 }
 
