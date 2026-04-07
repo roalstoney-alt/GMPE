@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Create Task DEBUG</title>
+<title>Worker Portal</title>
 
 <script src="https://cdn.jsdelivr.net/npm/ethers@6.10.0/dist/ethers.umd.min.js"></script>
 
@@ -10,12 +10,9 @@
 body {background:#0b0f14;color:white;font-family:Arial;}
 .container {max-width:700px;margin:auto;padding:20px;}
 .card {background:#141a22;padding:20px;margin-top:20px;border-radius:12px;}
-button {width:100%;padding:14px;margin-top:10px;background:#00ffae;border:none;}
-input {width:100%;padding:10px;margin-top:10px;}
-.log {background:#000;padding:10px;margin-top:15px;height:250px;overflow:auto;font-size:12px;}
-.ok {color:#00ffae;}
-.err {color:#ff4d4f;}
-.warn {color:#ffaa00;}
+button {width:100%;padding:14px;margin-top:10px;background:#00ffae;border:none;border-radius:8px;}
+.status {margin-top:10px;font-weight:bold;}
+.task {background:#1c2530;padding:15px;margin-top:10px;border-radius:8px;}
 </style>
 </head>
 
@@ -23,38 +20,36 @@ input {width:100%;padding:10px;margin-top:10px;}
 
 <div class="container">
 
-<h2>🧪 Create Task DEBUG</h2>
+<h2>👷 Worker Portal</h2>
 
 <div class="card">
-<div id="wallet"></div>
+<div id="wallet">Connecting wallet...</div>
+<div id="stakeStatus"></div>
 </div>
 
 <div class="card">
-<input id="reward" placeholder="Reward (e.g. 0.01)">
-<button onclick="runDebug()">Run Debug CreateTask</button>
+<h3>📋 Available Tasks</h3>
+<div id="tasks"></div>
 </div>
-
-<div id="log" class="log"></div>
 
 </div>
 
 <script>
 
+// ===== CONFIG =====
 const CONTRACT = "0x6881Ad624D23bDC3e21b3B6dafD49C3E7f61BB4C";
 
 const ABI = [
-  "function createTask(address,uint256)",
   "function workerStake(address) view returns(uint256)"
 ];
 
-let provider, signer, user;
+// ===== MOCK TASK DATA (can replace with backend later) =====
+let TASKS = [
+  { id: 1, desc: "Take photo of location", reward: "0.01" },
+  { id: 2, desc: "Upload short video", reward: "0.02" }
+];
 
-function log(msg, type=""){
-  const el = document.getElementById("log");
-  el.innerHTML += `<div class="${type}">▶ ${msg}</div>`;
-  el.scrollTop = el.scrollHeight;
-  console.log(msg);
-}
+let provider, signer, user;
 
 // ===== INIT =====
 window.onload = async function(){
@@ -68,93 +63,100 @@ window.onload = async function(){
     document.getElementById("wallet").innerText =
       "Wallet: " + user;
 
+    await checkStake();
+    renderTasks();
+
   }catch(e){
-    log(e.message, "err");
+    document.getElementById("wallet").innerText =
+      "❌ Wallet not connected";
   }
 };
 
-// ===== DEBUG RUN =====
-async function runDebug(){
+// ===== CHECK STAKE =====
+async function checkStake(){
 
-  document.getElementById("log").innerHTML = "";
+  const contract = new ethers.Contract(CONTRACT, ABI, provider);
+
+  let stake = await contract.workerStake(user);
+
+  if(stake == 0n){
+    document.getElementById("stakeStatus").innerHTML =
+      "❌ Not staked — please stake first";
+  } else {
+    document.getElementById("stakeStatus").innerHTML =
+      "✅ Stake detected: " + ethers.formatEther(stake) + " POL";
+  }
+}
+
+// ===== RENDER TASKS =====
+function renderTasks(){
+
+  let html = "";
+
+  TASKS.forEach(t => {
+
+    html += `
+    <div class="task">
+      <b>Task #${t.id}</b><br>
+      ${t.desc}<br>
+      Reward: ${t.reward} POL<br>
+      <button onclick="acceptTask(${t.id})">Accept Task</button>
+      <div id="status-${t.id}" class="status"></div>
+    </div>
+    `;
+  });
+
+  document.getElementById("tasks").innerHTML = html;
+}
+
+// ===== ACCEPT TASK (SIGNATURE) =====
+async function acceptTask(taskId){
 
   try{
 
-    if(!signer) throw new Error("Wallet not connected");
+    const contract = new ethers.Contract(CONTRACT, ABI, provider);
 
-    log("=== START DEBUG ===");
+    let stake = await contract.workerStake(user);
 
-    const contract = new ethers.Contract(CONTRACT, ABI, signer);
-
-    log("Contract: " + CONTRACT);
-
-    // 🔍 CHECK CODE EXISTS
-    const code = await provider.getCode(CONTRACT);
-    log("Contract code length: " + code.length);
-
-    if(code === "0x"){
-      log("❌ CONTRACT NOT FOUND", "err");
+    if(stake == 0n){
+      document.getElementById(`status-${taskId}`).innerText =
+        "❌ Stake required";
       return;
+    }
+
+    const task = TASKS.find(t => t.id === taskId);
+
+    const message = `
+Task ID: ${task.id}
+Description: ${task.desc}
+Reward: ${task.reward} POL
+Worker: ${user}
+`;
+
+    const signature = await signer.signMessage(message);
+
+    const recovered = ethers.verifyMessage(message, signature);
+
+    if(recovered.toLowerCase() === user.toLowerCase()){
+
+      document.getElementById(`status-${taskId}`).innerText =
+        "✅ Task accepted & signed";
+
+      console.log({
+        taskId: task.id,
+        worker: user,
+        signature: signature
+      });
+
     } else {
-      log("✅ Contract exists", "ok");
+      document.getElementById(`status-${taskId}`).innerText =
+        "❌ Signature failed";
     }
-
-    // 🔍 CHECK STAKE
-    const stake = await contract.workerStake(user);
-    log("Stake value: " + stake);
-
-    if(stake === 0n){
-      log("❌ NOT STAKED", "err");
-      return;
-    } else {
-      log("✅ Stake OK", "ok");
-    }
-
-    // 🔍 REWARD
-    const rewardInput = document.getElementById("reward").value;
-
-    if(!rewardInput){
-      throw new Error("Enter reward");
-    }
-
-    const reward = ethers.parseEther(rewardInput);
-    log("Reward parsed: " + reward);
-
-    // 🔍 STATIC CALL FIRST (IMPORTANT)
-    try{
-      await contract.createTask.staticCall(user, reward);
-      log("✅ Static call passed (no revert)", "ok");
-    }catch(e){
-      log("❌ STATIC CALL FAILED", "err");
-      log(e.reason || e.message, "err");
-      return;
-    }
-
-    // 🔥 REAL TX
-    log("Sending transaction...");
-
-    const tx = await contract.createTask(user, reward);
-
-    log("TX hash: " + tx.hash);
-
-    await tx.wait();
-
-    log("🎉 SUCCESS — TASK CREATED", "ok");
 
   }catch(e){
-
-    log("❌ ERROR OCCURRED", "err");
-
-    if(e.reason){
-      log("Reason: " + e.reason, "err");
-    }
-
-    if(e.data){
-      log("Data: " + e.data, "warn");
-    }
-
-    log(e.message, "err");
     console.error(e);
+    document.getElementById(`status-${taskId}`).innerText =
+      "❌ " + (e.message);
   }
 }
 
