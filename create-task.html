@@ -47,8 +47,7 @@ input {width:100%;padding:10px;margin-top:10px;border:none;border-radius:8px;}
 <script>
 
 // ===== CONFIG =====
-const CONTRACT = "0x6881Ad624D23bDC3e21b3B6dafD49C3E7f61BB4C"; // 🔥 replace with your deployed contract
-
+const CONTRACT = ethers.getAddress("0x6881Ad624D23bDC3e21b3B6dafD49C3E7f61BB4C");
 // ===== ABI (FINAL) =====
 const ABI = [
   "function createTask(address worker,uint256 reward)",
