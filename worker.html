@@ -1,108 +1,51 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <meta charset="UTF-8">
-    <title>Worker Portal - Full Integration</title>
-    <script src="https://cdn.jsdelivr.net/npm/ethers@6.10.0/dist/ethers.umd.min.js"></script>
+<meta charset="UTF-8">
+<title>Worker Debug Portal</title>
+<script src="https://cdn.jsdelivr.net/npm/ethers@6.10.0/dist/ethers.umd.min.js"></script>
 
-    <style>
-        body {margin:0;background:#0b0f14;color:white;font-family:Arial;scroll-behavior: smooth;}
-        .container {max-width:800px;margin:auto;padding:20px;}
-        .card {background:#141a22;padding:20px;margin-top:20px;border-radius:12px;border: 1px solid #252e3a;}
-        
-        /* 按钮与交互样式 */
-        .btn-primary {
-            width:100%; padding:14px; background:#00ffae; border:none; border-radius:10px; 
-            cursor:pointer; color: #0b0f14; font-weight: bold; font-size: 16px; transition: 0.3s;
-        }
-        .btn-primary:hover { background: #00d4ff; box-shadow: 0 0 15px rgba(0,255,174,0.4); }
-        .btn-primary:disabled { background: #444; color: #888; cursor: not-allowed; }
-        
-        .btn-secondary {
-            width:100%; padding:10px; margin-top:10px; background:#1e2630; color:#00d4ff; 
-            border:1px solid #00d4ff; border-radius:8px; cursor:pointer;
-        }
-
-        .task { border-bottom:1px solid #333; padding:10px 0; }
-        .highlight {color:#00ffae;}
-        #portal-section { display: none; margin-top: 40px; border-top: 2px dashed #333; padding-top: 20px; }
-        .status-msg { margin-top: 15px; font-size: 14px; color: #00ffae; font-weight: bold; text-align: center; }
-    </style>
+<style>
+body {background:#0b0f14;color:white;font-family:Arial;padding:20px;}
+.card {background:#141a22;padding:20px;margin-top:20px;border-radius:10px;}
+button {width:100%;padding:12px;margin-top:10px;border:none;border-radius:8px;cursor:pointer;}
+.primary {background:#00ffae;color:#000;font-weight:bold;}
+.secondary {background:#1e2630;color:#00d4ff;border:1px solid #00d4ff;}
+.log {margin-top:15px;font-size:13px;background:#000;padding:10px;border-radius:6px;max-height:300px;overflow:auto;}
+.error {color:#ff4d4f;}
+.success {color:#00ffae;}
+</style>
 </head>
 
 <body>
 
-<div class="container">
-    <section id="intro-section">
-        <h1>👷 Earn by Completing Real-World Tasks</h1>
-        <p>No experience needed. No middleman. Paid after verification.</p>
-
-        <div class="card">
-            <h2>💰 What You Can Earn</h2>
-            <p>
-                📸 Take location photos → $10–20<br>
-                📍 Find installation site → $20–50<br>
-                🤝 Talk to landlord → $50–100<br>
-                🔧 Assist installation → $100+
-            </p>
-        </div>
-
-        <div class="card">
-            <h2>📋 Task Types</h2>
-            <p class="highlight">Entry Level</p>
-            <p>✔ Take photos | ✔ Upload videos | ✔ Basic checks</p>
-            <p class="highlight">Advanced</p>
-            <p>✔ Installation support | ✔ Local coordination</p>
-        </div>
-
-        <div class="card">
-            <h2>🔥 Open Tasks (Live Feed)</h2>
-            <div class="task">📍 Jakarta – Take site photos | Reward: $20</div>
-            <div class="task">📍 Mumbai – Find location | Reward: $40</div>
-            <div class="task">📍 Bangkok – Landlord meeting | Reward: $60</div>
-        </div>
-
-        <div class="card">
-<h2>🔥 Start</h2>
-
-
-<h1>👷 Worker Portal</h1>
+<h2>🧪 Worker Debug Panel</h2>
 
 <div class="card">
-<h3>Step 1: Connect Wallet</h3>
-<button class="btn-secondary" onclick="connect()">Connect Wallet</button>
-<div id="wallet">Not connected</div>
-<button class="btn-secondary" onclick="switchPolygon()">Switch to Polygon</button>
-</div>
+<button class="secondary" onclick="connect()">1. Connect Wallet</button>
+<button class="secondary" onclick="checkEnv()">2. Check Environment</button>
+<button class="primary" onclick="stake()">3. Test Stake</button>
 
-<div class="card">
-<h3>Step 2: Stake 1 USDT</h3>
-<button id="stakeBtn" class="btn-primary" onclick="stake()">Stake & Activate</button>
-<div id="status" class="status"></div>
-</div>
-
-<div class="card">
-<h3>Step 3: Tasks</h3>
-<button class="btn-secondary" onclick="loadTasks()">Load Tasks</button>
-<div id="tasks"></div>
-</div>
-
+<div id="log" class="log"></div>
 </div>
 
 <script>
 
-// ===== CONFIG (CHECKSUM FIXED) =====
-const CONTRACT_RAW = "0xC93f3483C514a9ba22CdF2240B32734a69Bf17a2";
-const USDT_RAW = "0xC2132D05D31c914a87C6611C10748AaCBdA6C62";
+// ===== RAW CONFIG =====
+const CONTRACT = "0xc93f3483c514a9ba22cdf2240b32734a69bf17a2";
+const USDT = "0xc2132d05d31c914a87c6611c10748aacabda6c62";
 
-const CONTRACT = CONTRACT_RAW.toLowerCase();
-const USDT = USDT_RAW.toLowerCase();
-const ABI = [
-  "function stakeFund(uint256 amount)",
-  "function tasks(uint256) view returns(address,uint256,uint256,bool)"
-];
+const ABI = ["function stakeFund(uint256 amount)"];
 
 let provider, signer, user;
+
+// ===== LOGGER =====
+function log(msg, type=""){
+  const el = document.getElementById("log");
+  el.innerHTML += `<div class="${type}">▶ ${msg}</div>`;
+  el.scrollTop = el.scrollHeight;
+  console.log(msg);
+}
 
 // ===== CONNECT =====
 async function connect(){
@@ -112,47 +55,61 @@ async function connect(){
     signer = await provider.getSigner();
     user = await signer.getAddress();
 
-    const chain = await window.ethereum.request({method:'eth_chainId'});
-
-    document.getElementById("wallet").innerHTML =
-      `Wallet: ${user.slice(0,6)}...${user.slice(-4)}<br>
-       Network: ${chain==="0x89"?"Polygon ✅":"Wrong ❌"}`;
+    log("Wallet connected: " + user, "success");
 
   }catch(e){
-    showError(e);
+    log(e.message, "error");
   }
 }
 
-// ===== SWITCH NETWORK =====
-async function switchPolygon(){
+// ===== CHECK ENV =====
+async function checkEnv(){
+
   try{
-    await window.ethereum.request({
-      method:"wallet_switchEthereumChain",
-      params:[{chainId:"0x89"}]
-    });
-  }catch{
-    alert("Switch manually in MetaMask");
+    if(!provider) throw new Error("Connect wallet first");
+
+    const chain = await window.ethereum.request({method:'eth_chainId'});
+    log("Chain ID: " + chain);
+
+    if(chain !== "0x89"){
+      log("❌ NOT Polygon network", "error");
+    } else {
+      log("✅ Polygon detected", "success");
+    }
+
+    // 🔥 CHECK CONTRACT EXISTS
+    const code = await provider.getCode(CONTRACT);
+    log("Contract code length: " + code.length);
+
+    if(code === "0x"){
+      log("❌ CONTRACT NOT FOUND ON THIS NETWORK", "error");
+    } else {
+      log("✅ Contract exists", "success");
+    }
+
+    // 🔥 CHECK USDT
+    const usdtCode = await provider.getCode(USDT);
+    if(usdtCode === "0x"){
+      log("❌ USDT contract not found", "error");
+    } else {
+      log("✅ USDT contract OK", "success");
+    }
+
+  }catch(e){
+    log(e.message, "error");
   }
 }
 
 // ===== STAKE =====
 async function stake(){
 
-  const btn = document.getElementById("stakeBtn");
-
   try{
     if(!signer) throw new Error("Connect wallet first");
-
-    const chain = await window.ethereum.request({method:'eth_chainId'});
-    if(chain !== "0x89") throw new Error("Switch to Polygon first");
-
-    btn.disabled = true;
-    btn.innerText = "Processing...";
 
     const amount = ethers.parseUnits("1",6);
 
     // ===== APPROVE =====
-    setStatus("Step 1: Approving USDT...");
+    log("Approving USDT...");
     const token = new ethers.Contract(
       USDT,
       ["function approve(address,uint256) returns(bool)"],
@@ -160,71 +117,35 @@ async function stake(){
     );
 
     const tx1 = await token.approve(CONTRACT, amount);
+    log("Approve TX: " + tx1.hash);
     await tx1.wait();
+    log("Approve confirmed", "success");
 
     // ===== STAKE =====
-    setStatus("Step 2: Staking...");
+    log("Calling stakeFund...");
     const contract = new ethers.Contract(CONTRACT, ABI, signer);
 
     const tx2 = await contract.stakeFund(amount);
+    log("Stake TX: " + tx2.hash);
     await tx2.wait();
 
-    setStatus("✅ Activated! Redirecting...", "success");
-
-    setTimeout(()=>{
-      window.location.href = `create-task.html?worker=${user}`;
-    },1200);
+    log("✅ Stake SUCCESS", "success");
 
   }catch(e){
-    showError(e);
-    btn.disabled = false;
-    btn.innerText = "Retry Stake";
-  }
-}
 
-// ===== LOAD TASKS =====
-async function loadTasks(){
+    log("❌ ERROR:", "error");
 
-  try{
-    if(!provider) throw new Error("Connect wallet first");
-
-    const contract = new ethers.Contract(CONTRACT, ABI, provider);
-
-    let html="";
-
-    for(let i=0;i<5;i++){
-      try{
-        let t = await contract.tasks(i);
-
-        html += `
-        <div class="card">
-        Task #${i}<br>
-        Reward: ${Number(ethers.formatUnits(t[1],6))} USDT<br>
-        Status: ${t[3]?"✅ Available":"⏳ Pending"}
-        </div>`;
-      }catch{
-        break;
-      }
+    if(e.reason){
+      log("Reason: " + e.reason, "error");
     }
 
-    document.getElementById("tasks").innerHTML =
-      html || "No tasks yet";
+    if(e.data){
+      log("Data: " + e.data, "error");
+    }
 
-  }catch(e){
-    showError(e);
+    log(e.message, "error");
+    console.error(e);
   }
-}
-
-// ===== UI =====
-function setStatus(msg, type=""){
-  const el = document.getElementById("status");
-  el.className = "status " + type;
-  el.innerText = msg;
-}
-
-function showError(e){
-  console.error(e);
-  setStatus("❌ " + (e.reason || e.message), "error");
 }
 
 </script>
