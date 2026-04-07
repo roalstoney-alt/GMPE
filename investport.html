@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Investor Portal</title>
+
+<script src="https://cdn.jsdelivr.net/npm/ethers@6.7.0/dist/ethers.min.js"></script>
+
+<style>
+body {
+  margin:0;
+  background:#0b0f14;
+  color:white;
+  font-family:Arial;
+}
+
+.container {
+  max-width:700px;
+  margin:auto;
+  padding:20px;
+}
+
+.card {
+  background:#141a22;
+  padding:20px;
+  border-radius:12px;
+  margin-top:20px;
+}
+
+button {
+  width:100%;
+  padding:12px;
+  margin-top:10px;
+  border:none;
+  border-radius:10px;
+  background:#00ffae;
+  font-weight:bold;
+  cursor:pointer;
+}
+
+input {
+  width:100%;
+  padding:10px;
+  margin-top:10px;
+  border:none;
+  border-radius:8px;
+}
+
+.status {
+  margin-top:10px;
+  font-size:14px;
+  color:#aaa;
+}
+
+.warning {
+  color:#ff7675;
+  font-size:13px;
+}
+</style>
+</head>
+
+<body>
+
+<div class="container">
+
+<h2>🌍 Investor Portal</h2>
+
+<div class="card">
+<button onclick="connectWallet()">🔗 Connect Wallet</button>
+<div id="wallet"></div>
+</div>
+
+<div class="card">
+<h3>💰 Invest (USDT - Polygon)</h3>
+
+<input id="amount" placeholder="Enter amount (e.g. 10)">
+
+<button onclick="invest()">🚀 Invest Now</button>
+
+<div class="status" id="status"></div>
+
+<div class="warning">
+⚠️ Only official USDT (Polygon) is accepted.<br>
+Other tokens will NOT be counted.
+</div>
+
+</div>
+
+<div class="card">
+<h3>📊 Investment History</h3>
+<div id="history">No records yet</div>
+</div>
+
+<div class="card">
+<h3>🔐 Escrow Info</h3>
+<p>Funds are stored in a multisig Safe.</p>
+<p>No single party can move funds.</p>
+</div>
+
+</div>
+
+<script>
+
+// ===== 配置 =====
+const SAFE = "0xC8DF3B516616800b2709F66e1bee7520aBAbD4E2";
+
+// 官方 Polygon USDT
+const USDT = "0xC2132D05D31c914a87C6611C10748AaCBdA6C62";
+
+// ERC20 ABI
+const ERC20 = [
+  "function transfer(address to, uint256 amount) returns (bool)"
+];
+
+// ===== 状态 =====
+let provider, signer, user;
+
+// ===== 连接钱包 =====
+async function connectWallet(){
+
+  if(!window.ethereum){
+    alert("Please install MetaMask");
+    return;
+  }
+
+  provider = new ethers.BrowserProvider(window.ethereum);
+
+  await provider.send("eth_requestAccounts", []);
+
+  signer = await provider.getSigner();
+  user = await signer.getAddress();
+
+  document.getElementById("wallet").innerText =
+    "Connected: " + user;
+}
+
+// ===== 网络检查 =====
+async function checkNetwork(){
+
+  const network = await provider.getNetwork();
+
+  if(network.chainId !== 137n){
+    alert("Please switch to Polygon network");
+    throw new Error("Wrong network");
+  }
+}
+
+// ===== 投资 =====
+async function invest(){
+
+  try {
+
+    if(!signer){
+      alert("Connect wallet first");
+      return;
+    }
+
+    await checkNetwork();
+
+    let amount = document.getElementById("amount").value;
+
+    if(!amount || amount <= 0){
+      alert("Enter valid amount");
+      return;
+    }
+
+    document.getElementById("status").innerText =
+      "⏳ Preparing transaction...";
+
+    const token = new ethers.Contract(
+      USDT,
+      ERC20,
+      signer
+    );
+
+    let parsed = ethers.parseUnits(amount, 6);
+
+    document.getElementById("status").innerText =
+      "✍️ Confirm in wallet...";
+
+    let tx = await token.transfer(SAFE, parsed);
+
+    document.getElementById("status").innerText =
+      "⛓ TX sent: " + tx.hash;
+
+    await tx.wait();
+
+    document.getElementById("status").innerText =
+      "✅ Investment confirmed";
+
+    // ===== 记录本地历史 =====
+    addHistory(user, amount, tx.hash);
+
+  } catch(e){
+
+    console.error(e);
+
+    document.getElementById("status").innerText =
+      "❌ Error: " + e.message;
+  }
+}
+
+// ===== 本地记录（后续可换链上） =====
+function addHistory(user, amount, hash){
+
+  let history = JSON.parse(localStorage.getItem("investments") || "[]");
+
+  history.push({
+    user,
+    amount,
+    hash,
+    time: new Date().toLocaleString()
+  });
+
+  localStorage.setItem("investments", JSON.stringify(history));
+
+  renderHistory();
+}
+
+// ===== 渲染历史 =====
+function renderHistory(){
+
+  let history = JSON.parse(localStorage.getItem("investments") || "[]");
+
+  if(history.length === 0){
+    document.getElementById("history").innerText = "No records yet";
+    return;
+  }
+
+  document.getElementById("history").innerHTML =
+    history.map(h => `
+      <div style="margin-bottom:10px;">
+        ${h.amount} USDT<br>
+        <small>${h.user.slice(0,6)}...${h.user.slice(-4)}</small><br>
+        <small>${h.time}</small><br>
+        <a href="https://polygonscan.com/tx/${h.hash}" target="_blank">View TX</a>
+      </div>
+    `).join("");
+}
+
+// 初始化
+renderHistory();
+
+</script>
+
+</body>
+</html>
