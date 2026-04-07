@@ -2,148 +2,134 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Worker Debug Portal</title>
+<title>Worker Auto Debug</title>
 <script src="https://cdn.jsdelivr.net/npm/ethers@6.10.0/dist/ethers.umd.min.js"></script>
 
 <style>
 body {background:#0b0f14;color:white;font-family:Arial;padding:20px;}
-.card {background:#141a22;padding:20px;margin-top:20px;border-radius:10px;}
-button {width:100%;padding:12px;margin-top:10px;border:none;border-radius:8px;cursor:pointer;}
-.primary {background:#00ffae;color:#000;font-weight:bold;}
-.secondary {background:#1e2630;color:#00d4ff;border:1px solid #00d4ff;}
-.log {margin-top:15px;font-size:13px;background:#000;padding:10px;border-radius:6px;max-height:300px;overflow:auto;}
-.error {color:#ff4d4f;}
-.success {color:#00ffae;}
+.card {background:#141a22;padding:20px;border-radius:10px;max-width:600px;margin:auto;}
+button {width:100%;padding:14px;margin-top:10px;border:none;border-radius:8px;font-size:16px;cursor:pointer;}
+.run {background:#00ffae;color:#000;font-weight:bold;}
+.log {margin-top:15px;background:#000;padding:10px;border-radius:6px;height:300px;overflow:auto;font-size:13px;}
+.ok {color:#00ffae;}
+.bad {color:#ff4d4f;}
+.warn {color:#ffaa00;}
 </style>
 </head>
 
 <body>
 
-<h2>🧪 Worker Debug Panel</h2>
-
 <div class="card">
-<button class="secondary" onclick="connect()">1. Connect Wallet</button>
-<button class="secondary" onclick="checkEnv()">2. Check Environment</button>
-<button class="primary" onclick="stake()">3. Test Stake</button>
-
+<h2>🧪 Auto Debug Tool (Click Once)</h2>
+<button class="run" onclick="runAll()">Run Full Check</button>
 <div id="log" class="log"></div>
 </div>
 
 <script>
 
-// ===== RAW CONFIG =====
 const CONTRACT = "0xc93f3483c514a9ba22cdf2240b32734a69bf17a2";
 const USDT = "0xc2132d05d31c914a87c6611c10748aacabda6c62";
 
-const ABI = ["function stakeFund(uint256 amount)"];
-
 let provider, signer, user;
 
-// ===== LOGGER =====
 function log(msg, type=""){
   const el = document.getElementById("log");
   el.innerHTML += `<div class="${type}">▶ ${msg}</div>`;
   el.scrollTop = el.scrollHeight;
-  console.log(msg);
 }
 
-// ===== CONNECT =====
-async function connect(){
+// ===== MAIN =====
+async function runAll(){
+
+  document.getElementById("log").innerHTML = "";
+
   try{
+    log("Connecting wallet...");
+
     provider = new ethers.BrowserProvider(window.ethereum);
     await provider.send("eth_requestAccounts", []);
     signer = await provider.getSigner();
     user = await signer.getAddress();
 
-    log("Wallet connected: " + user, "success");
+    log("Wallet: " + user, "ok");
 
-  }catch(e){
-    log(e.message, "error");
-  }
-}
-
-// ===== CHECK ENV =====
-async function checkEnv(){
-
-  try{
-    if(!provider) throw new Error("Connect wallet first");
-
+    // ===== CHECK NETWORK =====
     const chain = await window.ethereum.request({method:'eth_chainId'});
     log("Chain ID: " + chain);
 
     if(chain !== "0x89"){
-      log("❌ NOT Polygon network", "error");
+      log("❌ NOT Polygon → switch network", "bad");
+      return;
     } else {
-      log("✅ Polygon detected", "success");
+      log("✅ Polygon network OK", "ok");
     }
 
-    // 🔥 CHECK CONTRACT EXISTS
+    // ===== CHECK CONTRACT =====
+    log("Checking CONTRACT...");
     const code = await provider.getCode(CONTRACT);
-    log("Contract code length: " + code.length);
 
     if(code === "0x"){
-      log("❌ CONTRACT NOT FOUND ON THIS NETWORK", "error");
+      log("❌ CONTRACT NOT FOUND ❌", "bad");
+      log("👉 Your contract is NOT on this network", "warn");
+      return;
     } else {
-      log("✅ Contract exists", "success");
+      log("✅ CONTRACT FOUND", "ok");
     }
 
-    // 🔥 CHECK USDT
+    // ===== CHECK USDT =====
+    log("Checking USDT...");
     const usdtCode = await provider.getCode(USDT);
+
     if(usdtCode === "0x"){
-      log("❌ USDT contract not found", "error");
+      log("❌ USDT NOT FOUND (wrong address)", "bad");
+      return;
     } else {
-      log("✅ USDT contract OK", "success");
+      log("✅ USDT OK", "ok");
     }
 
-  }catch(e){
-    log(e.message, "error");
-  }
-}
-
-// ===== STAKE =====
-async function stake(){
-
-  try{
-    if(!signer) throw new Error("Connect wallet first");
-
-    const amount = ethers.parseUnits("1",6);
-
-    // ===== APPROVE =====
-    log("Approving USDT...");
+    // ===== TEST APPROVE =====
+    log("Testing approve...");
     const token = new ethers.Contract(
       USDT,
       ["function approve(address,uint256) returns(bool)"],
       signer
     );
 
+    const amount = ethers.parseUnits("1",6);
+
     const tx1 = await token.approve(CONTRACT, amount);
     log("Approve TX: " + tx1.hash);
     await tx1.wait();
-    log("Approve confirmed", "success");
 
-    // ===== STAKE =====
-    log("Calling stakeFund...");
-    const contract = new ethers.Contract(CONTRACT, ABI, signer);
+    log("✅ APPROVE SUCCESS", "ok");
+
+    // ===== TEST STAKE =====
+    log("Testing stake...");
+    const contract = new ethers.Contract(
+      CONTRACT,
+      ["function stakeFund(uint256 amount)"],
+      signer
+    );
 
     const tx2 = await contract.stakeFund(amount);
     log("Stake TX: " + tx2.hash);
     await tx2.wait();
 
-    log("✅ Stake SUCCESS", "success");
+    log("🎉 ALL SUCCESS — SYSTEM WORKING", "ok");
 
   }catch(e){
 
-    log("❌ ERROR:", "error");
+    log("❌ ERROR OCCURRED", "bad");
 
-    if(e.reason){
-      log("Reason: " + e.reason, "error");
+    if(e.message.includes("resolver")){
+      log("👉 ROOT CAUSE: CONTRACT NOT FOUND ON NETWORK", "bad");
     }
 
-    if(e.data){
-      log("Data: " + e.data, "error");
+    if(e.message.includes("insufficient")){
+      log("👉 NOT ENOUGH USDT", "warn");
     }
 
-    log(e.message, "error");
+    log(e.message, "bad");
     console.error(e);
   }
 }
