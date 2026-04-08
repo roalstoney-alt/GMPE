@@ -8,26 +8,42 @@
 
 <style>
 body {background:#0f172a;color:white;font-family:Arial;}
-.card {border:1px solid #334155;padding:12px;margin:10px;border-radius:10px;}
-button {margin-top:6px;padding:6px 10px;background:#00ffae;border:none;}
+.container {max-width:800px;margin:auto;padding:20px;}
+.card {border:1px solid #334155;padding:15px;margin-top:15px;border-radius:10px;}
+button {padding:10px;margin-top:10px;background:#00ffae;border:none;border-radius:8px;}
+input {width:100%;padding:10px;margin-top:10px;border-radius:8px;border:none;}
+video, img {margin-top:10px;border-radius:8px;}
+.valid {color:#00ffae;}
+.invalid {color:red;}
 </style>
 </head>
 
 <body>
 
-<h2>💰 Owner Payment Panel</h2>
+<div class="container">
+
+<h2>💰 Investor / Owner Panel</h2>
 
 <div id="wallet"></div>
 <div id="balance"></div>
 
 <hr>
 
-<h3>Pending Payments</h3>
-<div id="requests"></div>
+<h3>🔍 Load Worker Proof</h3>
+
+<input id="cidInput" placeholder="Paste proof.json URL">
+
+<button onclick="loadProof()">Load & Verify</button>
+
+<div id="result"></div>
+
+</div>
 
 <script>
 
-const CONTRACT = "0x6881Ad624D23bDC3e21b3B6dafD49C3E7f61BB4C";
+// ===== CONFIG =====
+const CONTRACT = "0x6881Ad624D23bDC3e21b3B6dafD49C3E7f61BB4C"; // 🔥 replace
+const OWNER = "0xbf4c5Cd7eE0af3E1eeAf15c1542e1f3046a6C839";       // 🔥 replace
 
 const ABI = [
   "function withdraw(address payable to,uint256 amount)",
@@ -35,7 +51,7 @@ const ABI = [
 ];
 
 let provider = new ethers.BrowserProvider(window.ethereum);
-let signer, user;
+let signer, user, proofData;
 
 /* ======================
    INIT
@@ -47,10 +63,9 @@ async function init(){
   user = await signer.getAddress();
 
   document.getElementById("wallet").innerText =
-    "Owner: " + user;
+    "Wallet: " + user;
 
   await loadBalance();
-  render();
 }
 
 /* ======================
@@ -65,21 +80,85 @@ async function loadBalance(){
 }
 
 /* ======================
-   GET TASK DATA
+   LOAD + VERIFY PROOF
 ====================== */
-function getState(){
-  return JSON.parse(localStorage.getItem("workerTask") || "{}");
+async function loadProof(){
+
+  const url = document.getElementById("cidInput").value;
+
+  if(!url) return alert("Paste proof URL");
+
+  try{
+
+    const res = await fetch(url);
+    const data = await res.json();
+
+    proofData = data;
+
+    // 🔥 rebuild message EXACTLY like worker
+    const message = JSON.stringify({
+      taskId: data.taskId,
+      worker: data.worker,
+      proofFile: data.proofFile,
+      timestamp: data.timestamp
+    });
+
+    const recovered = ethers.verifyMessage(message, data.signature);
+
+    let valid = recovered.toLowerCase() === data.worker.toLowerCase();
+
+    let verifyText = valid
+      ? `<span class="valid">✅ Signature Verified</span>`
+      : `<span class="invalid">❌ Signature INVALID</span>`;
+
+    let media = renderProof(data.proofFile);
+
+    document.getElementById("result").innerHTML = `
+      <div class="card">
+        <b>Task:</b> ${data.taskId}<br>
+        <b>Worker:</b> ${data.worker}<br>
+        <b>Time:</b> ${new Date(data.timestamp).toLocaleString()}<br>
+
+        ${verifyText}
+
+        <h4>Proof:</h4>
+        ${media}
+
+        ${valid ? `<button onclick="pay()">Approve & Pay</button>` : ""}
+      </div>
+    `;
+
+  }catch(e){
+    document.getElementById("result").innerText =
+      "❌ Failed to load proof";
+  }
+}
+
+/* ======================
+   RENDER MEDIA
+====================== */
+function renderProof(url){
+
+  if(url.endsWith(".mp4")){
+    return `<video controls width="100%">
+              <source src="${url}" type="video/mp4">
+            </video>`;
+  }
+
+  if(url.match(/\.(jpg|jpeg|png|gif)$/)){
+    return `<img src="${url}" width="100%">`;
+  }
+
+  return `<a href="${url}" target="_blank">Open File</a>`;
 }
 
 /* ======================
    PAY WORKER
 ====================== */
-async function payWorker(){
+async function pay(){
 
-  let s = getState();
-
-  if(!s.worker || !s.proof){
-    alert("Invalid request");
+  if(user.toLowerCase() !== OWNER.toLowerCase()){
+    alert("Only owner can pay");
     return;
   }
 
@@ -87,58 +166,29 @@ async function payWorker(){
 
     const c = new ethers.Contract(CONTRACT, ABI, signer);
 
-    // 🔥 define payout amount manually (or map by taskId)
     let amount;
 
-    if(s.taskId == 1) amount = "0.01";
-    if(s.taskId == 2) amount = "0.02";
-    if(s.taskId == 3) amount = "0.03";
+    // 🔥 task reward mapping
+    if(proofData.taskId == 1) amount = "100";
+    if(proofData.taskId == 2) amount = "200";
+    if(proofData.taskId == 3) amount = "500";
 
     const value = ethers.parseEther(amount);
 
-    document.getElementById("requests").innerHTML =
-      "⏳ Sending payment...";
+    document.getElementById("result").innerHTML +=
+      "<br>⏳ Processing payment...";
 
-    const tx = await c.withdraw(s.worker, value);
+    const tx = await c.withdraw(proofData.worker, value);
 
     await tx.wait();
 
-    document.getElementById("requests").innerHTML =
-      "✅ Payment sent";
+    document.getElementById("result").innerHTML +=
+      "<br>✅ Payment sent successfully";
 
   }catch(e){
     console.error(e);
-    document.getElementById("requests").innerHTML =
-      "❌ " + (e.reason || e.message);
+    alert(e.reason || e.message);
   }
-}
-
-/* ======================
-   RENDER
-====================== */
-function render(){
-
-  let s = getState();
-
-  let html = "";
-
-  if(s.status === "pending_payment"){
-
-    html += `<div class="card">
-      <b>Task ID:</b> ${s.taskId}<br>
-      <b>Worker:</b> ${s.worker}<br>
-      <b>Proof:</b> ${s.proof}<br>
-
-      <button onclick="payWorker()">Approve & Pay</button>
-    </div>`;
-
-  } else {
-
-    html = "No pending payment";
-
-  }
-
-  document.getElementById("requests").innerHTML = html;
 }
 
 init();
