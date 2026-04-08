@@ -2,22 +2,15 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Global Power Network</title>
+<title>Global Mobile-Power Network</title>
 
 <style>
 body {margin:0;background:#0b0f14;color:white;font-family:Arial;}
 
 .title {text-align:center;padding:10px;font-size:22px;font-weight:bold;}
-
-.subtitle {
-  text-align:center;
-  font-size:14px;
-  color:#aaa;
-  margin-top:-5px;
-}
+.subtitle {text-align:center;font-size:14px;color:#aaa;margin-top:-5px;}
 
 .cta {text-align:center;margin-bottom:10px;}
-
 .cta button{
   background:#00ffae;border:none;padding:10px 20px;
   border-radius:20px;font-weight:bold;cursor:pointer;
@@ -37,8 +30,27 @@ body {margin:0;background:#0b0f14;color:white;font-family:Arial;}
 }
 
 .house {font-size:34px;cursor:pointer;}
-.worker {font-size:16px;cursor:pointer;margin:2px;}
-.battery {font-size:16px;}
+
+.worker {
+  font-size:16px;
+  margin:2px;
+  cursor:pointer;
+  transition:transform 0.2s;
+}
+.worker:hover {transform:scale(1.2);}
+
+.observer {
+  font-size:14px;
+  margin:2px;
+  display:inline-block;
+  animation:pulse 1.8s infinite;
+}
+
+@keyframes pulse {
+  0% {opacity:0.4;}
+  50% {opacity:1;}
+  100% {opacity:0.4;}
+}
 
 .progress {
   width:70px;height:6px;background:#222;margin:auto;border-radius:4px;
@@ -50,7 +62,7 @@ body {margin:0;background:#0b0f14;color:white;font-family:Arial;}
   left:10px;
   top:10px;
   width:240px;
-  height:260px;
+  height:380px;
   background:#141a22;
   padding:10px;
   border-radius:10px;
@@ -91,7 +103,7 @@ body {margin:0;background:#0b0f14;color:white;font-family:Arial;}
 </div>
 
 <div class="subtitle">
-Earn by completing real-world tasks. Build your on-chain reputation.
+Earn by Working, Verifying, and Funding Real-World Tasks
 </div>
 
 <div style="text-align:center;margin:10px;font-size:16px;color:#00ffae;">
@@ -103,9 +115,9 @@ Earn by completing real-world tasks. Build your on-chain reputation.
 </div>
 
 <div style="text-align:center;margin-top:5px;">
-<button onclick="window.location.href='worker.html'">
-👷 Start Earning Now
-</button>
+<button onclick="window.location.href='worker.html'">👷 Start Earning Now</button>
+<button onclick="window.location.href='observer.html'">🧾 Become Observer</button>
+<button onclick="window.location.href='investor.html'">💰 Invest</button>
 </div>
 
 <div class="map">
@@ -116,30 +128,36 @@ Earn by completing real-world tasks. Build your on-chain reputation.
 
 <h4>👷 Workers</h4>
 <div id="workerRank"></div>
+
+<h4>🧾 Observers</h4>
+<div id="observerRank"></div>
 </div>
 
 <!-- Jakarta -->
-<div class="city" style="left:70%;top:65%;">
+<div class="city" style="left:75%;top:70%;">
   <div class="house" onclick="showInvestor('jakarta')">🏠☀️🔋</div>
   <div id="jakartaWorkers"></div>
+  <div id="jakartaObservers"></div>
   <div id="jakartaBattery"></div>
   <div class="progress"><div id="jakartaProgress" class="progress-fill"></div></div>
   Jakarta
 </div>
 
 <!-- Mumbai -->
-<div class="city" style="left:60%;top:45%;">
+<div class="city" style="left:60%;top:50%;">
   <div class="house" onclick="showInvestor('mumbai')">🏠☀️🔋</div>
   <div id="mumbaiWorkers"></div>
+  <div id="mumbaiObservers"></div>
   <div id="mumbaiBattery"></div>
   <div class="progress"><div id="mumbaiProgress" class="progress-fill"></div></div>
   Mumbai
 </div>
 
 <!-- Kampala -->
-<div class="city" style="left:50%;top:60%;">
+<div class="city" style="left:40%;top:65%;">
   <div class="house" onclick="showInvestor('kampala')">🏠☀️🔋</div>
   <div id="kampalaWorkers"></div>
+  <div id="kampalaObservers"></div>
   <div id="kampalaBattery"></div>
   <div class="progress"><div id="kampalaProgress" class="progress-fill"></div></div>
   Kampala
@@ -158,8 +176,11 @@ let cities = {
     invested:1000,
     returned:0,
     workers:[
-      {name:"W1",wallet:"0xW1...",progress:30},
-      {name:"W2",wallet:"0xW2...",progress:60}
+      {name:"W1",progress:30},
+      {name:"W2",progress:60}
+    ],
+    observers:[
+      {name:"O1",score:0}
     ]
   },
   mumbai:{
@@ -167,7 +188,10 @@ let cities = {
     invested:500,
     returned:0,
     workers:[
-      {name:"W3",wallet:"0xW3...",progress:20}
+      {name:"W3",progress:20}
+    ],
+    observers:[
+      {name:"O2",score:0}
     ]
   },
   kampala:{
@@ -175,7 +199,10 @@ let cities = {
     invested:800,
     returned:0,
     workers:[
-      {name:"W4",wallet:"0xW4...",progress:80}
+      {name:"W4",progress:80}
+    ],
+    observers:[
+      {name:"O3",score:0}
     ]
   }
 };
@@ -192,24 +219,7 @@ function showInvestor(name){
 
   showDetail(`
     🏠 <b>${name.toUpperCase()}</b><br><br>
-    Wallet: ${c.wallet}<br>
-    Invested: $${c.invested}<br>
-    Returned: $${c.returned.toFixed(2)}<br>
-    ROI: <span style="color:#00ffae">${roi}%</span><br><br>
-    ⚡ Energy Output<br>
-    🔋 ${Math.floor(c.returned/10)} Units
-  `);
-}
-
-function showWorker(city,index){
-  let w=cities[city].workers[index];
-
-  showDetail(`
-    👷 <b>${w.name}</b><br><br>
-    Wallet: ${w.wallet}<br>
-    Progress: ${w.progress.toFixed(0)}%<br><br>
-    💸 Estimated earning:<br>
-    $${(w.progress*0.5).toFixed(2)}
+    ROI: ${roi}%
   `);
 }
 
@@ -217,11 +227,10 @@ function log(msg){
   let f=document.getElementById("feed");
   let d=document.createElement("div");
 
-  let emojis = ["⚡","💸","🔋","🌍"];
-  let e = emojis[Math.floor(Math.random()*emojis.length)];
+  let emojis=["⚡","💸","🔋","🌍"];
+  let e=emojis[Math.floor(Math.random()*emojis.length)];
 
   d.innerText=new Date().toLocaleTimeString()+" "+e+" "+msg;
-
   f.prepend(d);
 }
 
@@ -229,14 +238,16 @@ function render(){
 
   let inv=[];
   let workers=[];
+  let observers=[];
 
   Object.keys(cities).forEach(name=>{
     let c=cities[name];
 
     document.getElementById(name+"Workers").innerHTML =
-      c.workers.map((w,i)=>
-        `<span class="worker" onclick="showWorker('${name}',${i})">👷</span>`
-      ).join("");
+      c.workers.map(()=>`<span class="worker">👷</span>`).join("");
+
+    document.getElementById(name+"Observers").innerHTML =
+      c.observers.map(()=>`<span class="observer">👁️</span>`).join("");
 
     document.getElementById(name+"Battery").innerHTML =
       "🔋".repeat(Math.floor(c.returned/20));
@@ -246,16 +257,21 @@ function render(){
 
     inv.push({name,roi:c.returned/c.invested});
     c.workers.forEach(w=>workers.push(w));
+    c.observers.forEach(o=>observers.push(o));
   });
 
   inv.sort((a,b)=>b.roi-a.roi);
   workers.sort((a,b)=>b.progress-a.progress);
+  observers.sort((a,b)=>b.score-a.score);
 
   document.getElementById("investorRank").innerHTML =
     inv.map(i=>`${i.name} ${(i.roi*100).toFixed(1)}%`).join("<br>");
 
   document.getElementById("workerRank").innerHTML =
-    workers.map(w=>`${w.name} ${w.progress.toFixed(0)}%`).join("<br>");
+    workers.map((w,i)=>`W${i+1} ${w.progress.toFixed(0)}%`).join("<br>");
+
+  document.getElementById("observerRank").innerHTML =
+    observers.map((o,i)=>`${o.name} ${o.score}`).join("<br>");
 }
 
 setInterval(()=>{
@@ -272,9 +288,13 @@ setInterval(()=>{
         let reward=(10+Math.random()*40).toFixed(2);
         c.returned+=parseFloat(reward);
 
-        document.getElementById("lastEarn").innerText = reward;
+        document.getElementById("lastEarn").innerText=reward;
+
+        // observer earns score
+        c.observers.forEach(o=>o.score+=1);
 
         log("Worker completed task in "+name);
+        log("Observer verified task in "+name);
         log("Energy generated +$"+reward);
       }
     });
