@@ -3,12 +3,14 @@
 <head>
 <meta charset="UTF-8">
 <title>Worker Task Portal</title>
+
 <script src="https://cdn.jsdelivr.net/npm/ethers@6.10.0/dist/ethers.umd.min.js"></script>
 
 <style>
 body {background:#0f172a;color:white;font-family:Arial;}
 .card {border:1px solid #334155;padding:12px;margin:10px;border-radius:10px;}
-button {margin-top:6px;padding:6px 10px;}
+button {margin-top:6px;padding:8px 12px;}
+input {margin-top:6px;}
 </style>
 </head>
 
@@ -16,203 +18,191 @@ button {margin-top:6px;padding:6px 10px;}
 
 <h2>👷 Worker Task Portal</h2>
 <div id="wallet"></div>
-<div id="stakeStatus"></div>
 
 <hr>
 
-<h3>Available Tasks</h3>
+<h3>Select Task</h3>
 <div id="tasks"></div>
+
+<hr>
+
+<h3>Resume Task</h3>
+<input id="resumeInput" placeholder="Paste proof.json link">
+<button onclick="resumeTask()">Resume</button>
+
+<div id="output"></div>
 
 <script>
 
+// 🔥 CONFIG
+const PINATA_JWT = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySW5mb3JtYXRpb24iOnsiaWQiOiJmYjY5MzZhYy1jMTU5LTRiNDItYjg5ZC0xYTFjZjlhNjc5MWQiLCJlbWFpbCI6InJvYWxzdG9uZXlAZ21haWwuY29tIiwiZW1haWxfdmVyaWZpZWQiOnRydWUsInBpbl9wb2xpY3kiOnsicmVnaW9ucyI6W3siZGVzaXJlZFJlcGxpY2F0aW9uQ291bnQiOjEsImlkIjoiRlJBMSJ9LHsiZGVzaXJlZFJlcGxpY2F0aW9uQ291bnQiOjEsImlkIjoiTllDMSJ9XSwidmVyc2lvbiI6MX0sIm1mYV9lbmFibGVkIjpmYWxzZSwic3RhdHVzIjoiQUNUSVZFIn0sImF1dGhlbnRpY2F0aW9uVHlwZSI6InNjb3BlZEtleSIsInNjb3BlZEtleUtleSI6IjMwZmE0N2I3OWY4YjAzNDNlMmM2Iiwic2NvcGVkS2V5U2VjcmV0IjoiMjc0MWEyOWZlMTc1ZjdiMzQ4NWJjMTIxNDczMDA5MGUxNjk1YjE5MTU0ZjU2ZGRlOTBjZGY3ODY1NDZiNDE3ZiIsImV4cCI6MTgwNzE3MDc1NH0.b0ncY22hheWtgZn-xpJcj2T2B3RkJ3atM12vi8eFoUA"; // ⚠️ replace
 const CONTRACT = "0x6881Ad624D23bDC3e21b3B6dafD49C3E7f61BB4C";
-
-const ABI = [
-  "function workerStake(address) view returns(uint256)"
-];
 
 let provider = new ethers.BrowserProvider(window.ethereum);
 let signer, user;
 
-/* ======================
-   INIT
-====================== */
+/* ===== INIT ===== */
 async function init(){
   await provider.send("eth_requestAccounts", []);
   signer = await provider.getSigner();
-  user = (await signer.getAddress()).toLowerCase(); // 🔥 normalize
+  user = (await signer.getAddress()).toLowerCase();
 
-  document.getElementById("wallet").innerText =
-    "Wallet: " + user;
+  document.getElementById("wallet").innerText = "Wallet: " + user;
 
-  await checkStake();
-  render();
+  renderTasks();
 }
 
-/* ======================
-   STAKE CHECK
-====================== */
-async function checkStake(){
-  const c = new ethers.Contract(CONTRACT, ABI, provider);
-  const s = await c.workerStake(user);
-
-  document.getElementById("stakeStatus").innerText =
-    s > 0n ? "✅ Staked" : "❌ Not Staked";
-}
-
-/* ======================
-   FIXED TASKS
-====================== */
+/* ===== TASK LIST ===== */
 const TASKS = [
-  { id: 1, name: "Task 1 - Photo", reward: "0.01" },
-  { id: 2, name: "Task 2 - Video", reward: "0.02" },
-  { id: 3, name: "Task 3 - Survey", reward: "0.03" }
+  { id:1, name:"Task 1 - Photo take 3 photos on site with date and gps ", reward:"100" },
+  { id:2, name:"Task 2 - Video shot video and read out date and location write on the A4 paper", reward:"200" },
+  { id:3, name:"Task 3 - Survey get site owner contract or agreement", reward:"500" }
 ];
 
-/* ======================
-   STORAGE
-====================== */
-function getAll(){
-  return JSON.parse(localStorage.getItem("tasksDB") || "[]");
-}
-
-function saveAll(data){
-  localStorage.setItem("tasksDB", JSON.stringify(data));
-}
-
-/* ======================
-   SELECT TASK
-====================== */
-async function selectTask(id){
-
-  const c = new ethers.Contract(CONTRACT, ABI, provider);
-  const stake = await c.workerStake(user);
-
-  if(stake == 0n){
-    alert("Stake required");
-    return;
-  }
-
-  let all = getAll();
-
-  let existing = all.find(x =>
-    x.worker.toLowerCase() === user
-  );
-
-  if(existing){
-    alert("You already selected a task");
-    return;
-  }
-
-  const msg = `SELECT:${id}:${user}:${Date.now()}`;
-  const sig = await signer.signMessage(msg);
-
-  all.push({
-    taskId: id,
-    worker: user, // already normalized
-    status: "selected",
-    signature: sig
-  });
-
-  saveAll(all);
-  render();
-}
-
-/* ======================
-   UPLOAD PROOF
-====================== */
-function uploadProof(id){
-
-  let all = getAll();
-
-  let t = all.find(x =>
-    x.worker.toLowerCase() === user &&
-    x.taskId === id
-  );
-
-  const file = document.getElementById("file-"+id).files[0];
-  if(!file) return alert("Select file");
-
-  t.proof = file.name;
-  t.status = "submitted";
-
-  saveAll(all);
-  render();
-}
-
-/* ======================
-   REQUEST PAYMENT
-====================== */
-async function requestPayment(id){
-
-  let all = getAll();
-
-  let t = all.find(x =>
-    x.worker.toLowerCase() === user &&
-    x.taskId === id
-  );
-
-  const msg = `PAY:${id}:${user}:${t.proof}:${Date.now()}`;
-  const sig = await signer.signMessage(msg);
-
-  t.paySig = sig;
-  t.status = "pending_payment";
-
-  saveAll(all);
-  render();
-}
-
-/* ======================
-   RENDER
-====================== */
-function render(){
-
-  let all = getAll();
-
-  let myTask = all.find(x =>
-    x.worker.toLowerCase() === user
-  );
-
+function renderTasks(){
   let html = "";
 
-  TASKS.forEach(t => {
+  TASKS.forEach(t=>{
+    html += `
+      <div class="card">
+        <b>${t.name}</b><br>
+        Reward: ${t.reward} POL<br>
 
-    html += `<div class="card">
-      <b>${t.name}</b><br>
-      Reward: ${t.reward} ETH<br>`;
-
-    // NOT SELECTED
-    if(!myTask){
-      html += `<button onclick="selectTask(${t.id})">Select</button>`;
-    }
-
-    // MY TASK
-    if(myTask && myTask.taskId === t.id){
-
-      html += `<br>✅ Your Task<br>Status: ${myTask.status}<br>`;
-
-      if(myTask.status === "selected"){
-        html += `
-          <input type="file" id="file-${t.id}">
-          <button onclick="uploadProof(${t.id})">Upload Proof</button>
-        `;
-      }
-
-      if(myTask.status === "submitted"){
-        html += `
-          <button onclick="requestPayment(${t.id})">Request Payment</button>
-        `;
-      }
-
-      if(myTask.status === "pending_payment"){
-        html += `<br>💰 Waiting payment`;
-      }
-    }
-
-    html += `</div>`;
+        <input type="file" id="file-${t.id}">
+        <button onclick="submitTask(${t.id})">Upload & Submit</button>
+      </div>
+    `;
   });
 
   document.getElementById("tasks").innerHTML = html;
+}
+
+/* ===== UPLOAD FILE → PINATA ===== */
+async function uploadFile(file){
+
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const res = await fetch("https://api.pinata.cloud/pinning/pinFileToIPFS",{
+    method:"POST",
+    headers:{
+      Authorization: `Bearer ${PINATA_JWT}`
+    },
+    body:formData
+  });
+
+  const data = await res.json();
+
+  return `https://white-urban-sheep-350.mypinata.cloud/ipfs/${data.IpfsHash}/${file.name}`;
+}
+
+/* ===== UPLOAD JSON → PINATA ===== */
+async function uploadJSON(obj){
+
+  const res = await fetch("https://api.pinata.cloud/pinning/pinJSONToIPFS",{
+    method:"POST",
+    headers:{
+      "Content-Type":"application/json",
+      Authorization: `Bearer ${PINATA_JWT}`
+    },
+    body: JSON.stringify({
+      pinataContent: obj
+    })
+  });
+
+  const data = await res.json();
+
+  return `https://white-urban-sheep-350.mypinata.cloud/ipfs/${data.IpfsHash}`;
+}
+
+/* ===== SUBMIT TASK ===== */
+async function submitTask(id){
+
+  const file = document.getElementById(`file-${id}`).files[0];
+  if(!file) return alert("Select file");
+
+  try{
+
+    // 1️⃣ upload file
+    const fileURL = await uploadFile(file);
+
+    // 2️⃣ build metadata
+    const payload = {
+      taskId: id,
+      worker: user,
+      proofFile: fileURL,
+      timestamp: Date.now()
+    };
+
+    // 3️⃣ sign
+    const message = JSON.stringify(payload);
+    const signature = await signer.signMessage(message);
+
+    const finalData = {
+      ...payload,
+      signature
+    };
+
+    // 4️⃣ upload JSON
+    const proofURL = await uploadJSON(finalData);
+
+    document.getElementById("output").innerHTML = `
+      <div class="card">
+        ✅ Submitted<br>
+        <b>Save this link:</b><br>
+        <a href="${proofURL}" target="_blank">${proofURL}</a>
+      </div>
+    `;
+
+  }catch(e){
+    console.error(e);
+    alert("Upload failed");
+  }
+}
+
+/* ===== RESUME ===== */
+async function resumeTask(){
+
+  const url = document.getElementById("resumeInput").value;
+
+  try{
+    const res = await fetch(url);
+    const data = await res.json();
+
+    if(data.worker.toLowerCase() !== user){
+      alert("Not your task");
+      return;
+    }
+
+    document.getElementById("output").innerHTML = `
+      <div class="card">
+        Task: ${data.taskId}<br>
+        Worker: ${data.worker}<br>
+
+        <h4>Proof:</h4>
+        ${renderProof(data.proofFile)}
+      </div>
+    `;
+
+  }catch(e){
+    alert("Invalid link");
+  }
+}
+
+/* ===== RENDER PROOF ===== */
+function renderProof(url){
+
+  if(url.endsWith(".mp4")){
+    return `<video controls width="100%">
+              <source src="${url}">
+            </video>`;
+  }
+
+  if(url.match(/\.(jpg|png|jpeg|gif)$/)){
+    return `<img src="${url}" width="100%">`;
+  }
+
+  return `<a href="${url}" target="_blank">Open File</a>`;
 }
 
 init();
