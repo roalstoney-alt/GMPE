@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <title>Observer Panel</title>
 
+<button onclick="connectWallet()">🔗 Connect Wallet</button>
+
 <script src="https://cdn.jsdelivr.net/npm/ethers@6.10.0/dist/ethers.umd.min.js"></script>
 
 <style>
@@ -29,72 +31,105 @@ input {width:100%;padding:10px;margin-top:10px;border-radius:8px;border:none;}
 
 <script>
 
-// ===== CONFIG =====
-const PINATA_GATEWAY = "https://white-urban-sheep-350.mypinata.cloud/ipfs/";
-
-let provider = new ethers.BrowserProvider(window.ethereum);
+let provider;
 let signer = null;
 let user = null;
 let proofData = null;
 
 /* ======================
-   CONNECT WALLET
+   INIT
 ====================== */
-async function connectWallet(){
-  await provider.send("eth_requestAccounts", []);
-  signer = await provider.getSigner();
-  user = await signer.getAddress();
+function init(){
+
+  if(typeof window.ethereum === "undefined"){
+    document.getElementById("wallet").innerHTML =
+      "❌ No wallet detected (install MetaMask)";
+    return;
+  }
+
+  provider = new ethers.BrowserProvider(window.ethereum);
 
   document.getElementById("wallet").innerHTML =
-    "✅ Observer: " + user;
+    "🟡 Wallet not connected";
 }
 
 /* ======================
-   LOAD PROOF (ANYONE CAN)
+   CONNECT WALLET (FIXED)
+====================== */
+async function connectWallet(){
+
+  try{
+
+    if(!provider){
+      alert("No wallet found");
+      return;
+    }
+
+    await provider.send("eth_requestAccounts", []);
+
+    signer = await provider.getSigner();
+    user = await signer.getAddress();
+
+    document.getElementById("wallet").innerHTML =
+      "✅ Connected: " + user;
+
+  }catch(err){
+    console.error(err);
+    alert("Wallet connection failed");
+  }
+}
+
+/* ======================
+   LOAD PROOF
 ====================== */
 async function loadProof(){
 
   const url = document.getElementById("cidInput").value;
 
-  if(!url) return alert("Paste CID");
+  if(!url){
+    alert("Paste proof URL");
+    return;
+  }
 
-  const res = await fetch(url);
-  const data = await res.json();
+  try{
 
-  proofData = data;
+    const res = await fetch(url);
+    const data = await res.json();
 
-  // verify worker signature
-  const message = JSON.stringify({
-    taskId: data.taskId,
-    worker: data.worker,
-    proofFile: data.proofFile,
-    timestamp: data.timestamp
-  });
+    proofData = data;
 
-  const recovered = ethers.verifyMessage(message, data.signature);
+    const message = JSON.stringify({
+      taskId: data.taskId,
+      worker: data.worker,
+      proofFile: data.proofFile,
+      timestamp: data.timestamp
+    });
 
-  const valid = recovered.toLowerCase() === data.worker.toLowerCase();
+    const recovered = ethers.verifyMessage(message, data.signature);
 
-  document.getElementById("result").innerHTML = `
-    <div class="card">
-      <b>Task:</b> ${data.taskId}<br>
-      <b>Worker:</b> ${data.worker}<br>
+    const valid = recovered.toLowerCase() === data.worker.toLowerCase();
 
-      ${valid ? "✅ Worker verified" : "❌ Invalid proof"}
+    document.getElementById("result").innerHTML = `
+      <div class="card">
+        Task: ${data.taskId}<br>
+        Worker: ${data.worker}<br>
 
-      <h4>Proof:</h4>
-      ${renderProof(data.proofFile)}
+        ${valid ? "✅ Worker verified" : "❌ Invalid proof"}
 
-      ${valid ? `
-        <button onclick="connectWallet()">Connect Wallet</button>
-        <button onclick="approve()">Approve (Sign)</button>
-      ` : ""}
-    </div>
-  `;
+        <br><br>
+        <button onclick="connectWallet()">🔗 Connect Wallet</button>
+        <button onclick="approve()">✅ Approve</button>
+      </div>
+    `;
+
+  }catch(e){
+    console.error(e);
+    alert("Failed to load proof");
+  }
 }
 
 /* ======================
-   APPROVE (SIGN ONLY)
+   APPROVE
 ====================== */
 async function approve(){
 
@@ -111,51 +146,16 @@ async function approve(){
 
   const message = JSON.stringify(review);
 
-  const observerSig = await signer.signMessage(message);
+  const sig = await signer.signMessage(message);
 
-  review.observerSig = observerSig;
+  review.observerSig = sig;
 
-  // upload review.json to IPFS
-  const res = await fetch("https://api.pinata.cloud/pinning/pinJSONToIPFS",{
-    method:"POST",
-    headers:{
-      "Content-Type":"application/json",
-      Authorization:`Bearer YOUR_PINATA_JWT`
-    },
-    body: JSON.stringify({
-      pinataContent: review
-    })
-  });
+  console.log("SIGNED:", review);
 
-  const data = await res.json();
-
-  const url = PINATA_GATEWAY + data.IpfsHash;
-
-  document.getElementById("result").innerHTML += `
-    <br><br>✅ Approved<br>
-    <b>Review Link:</b><br>
-    <a href="${url}" target="_blank">${url}</a>
-  `;
+  alert("✅ Signed (upload to IPFS next step)");
 }
 
-/* ======================
-   RENDER MEDIA
-====================== */
-function renderProof(url){
-
-  if(url.endsWith(".mp4")){
-    return `<video controls width="100%">
-              <source src="${url}">
-            </video>`;
-  }
-
-  if(url.match(/\.(jpg|png|jpeg|gif)$/)){
-    return `<img src="${url}" width="100%">`;
-  }
-
-  return `<a href="${url}" target="_blank">Open File</a>`;
-}
-
+init();
 </script>
 
 </body>
