@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Worker Task System</title>
+<title>Worker Task Portal</title>
 <script src="https://cdn.jsdelivr.net/npm/ethers@6.10.0/dist/ethers.umd.min.js"></script>
 
 <style>
@@ -14,13 +14,13 @@ button {margin-top:6px;padding:6px 10px;}
 
 <body>
 
-<h2>Worker Task Portal</h2>
+<h2>👷 Worker Task Portal</h2>
 <div id="wallet"></div>
 <div id="stakeStatus"></div>
 
 <hr>
 
-<h3>Select Task</h3>
+<h3>Available Tasks</h3>
 <div id="tasks"></div>
 
 <script>
@@ -38,7 +38,6 @@ let signer, user;
    INIT
 ====================== */
 async function init(){
-
   await provider.send("eth_requestAccounts", []);
   signer = await provider.getSigner();
   user = await signer.getAddress();
@@ -62,7 +61,7 @@ async function checkStake(){
 }
 
 /* ======================
-   TASKS (FIXED)
+   FIXED TASKS
 ====================== */
 const TASKS = [
   { id: 1, name: "Task 1 - Photo", reward: "0.01" },
@@ -71,14 +70,14 @@ const TASKS = [
 ];
 
 /* ======================
-   STORAGE
+   STORAGE (MULTI-WORKER)
 ====================== */
-function getState(){
-  return JSON.parse(localStorage.getItem("workerTask") || "{}");
+function getAll(){
+  return JSON.parse(localStorage.getItem("tasksDB") || "[]");
 }
 
-function saveState(s){
-  localStorage.setItem("workerTask", JSON.stringify(s));
+function saveAll(data){
+  localStorage.setItem("tasksDB", JSON.stringify(data));
 }
 
 /* ======================
@@ -94,51 +93,63 @@ async function selectTask(id){
     return;
   }
 
+  let all = getAll();
+
+  // 🔥 one worker = one task
+  let existing = all.find(x => x.worker === user);
+
+  if(existing){
+    alert("You already selected a task");
+    return;
+  }
+
   const msg = `SELECT:${id}:${user}:${Date.now()}`;
   const sig = await signer.signMessage(msg);
 
-  const state = {
+  all.push({
     taskId: id,
     worker: user,
-    signature: sig,
-    status: "selected"
-  };
+    status: "selected",
+    signature: sig
+  });
 
-  saveState(state);
+  saveAll(all);
   render();
 }
 
 /* ======================
    UPLOAD PROOF
 ====================== */
-function uploadProof(){
+function uploadProof(id){
 
-  let s = getState();
+  let all = getAll();
+  let t = all.find(x => x.worker === user && x.taskId === id);
 
-  const file = document.getElementById("proof").files[0];
+  const file = document.getElementById("file-"+id).files[0];
   if(!file) return alert("Select file");
 
-  s.proof = file.name;
-  s.status = "submitted";
+  t.proof = file.name;
+  t.status = "submitted";
 
-  saveState(s);
+  saveAll(all);
   render();
 }
 
 /* ======================
    REQUEST PAYMENT
 ====================== */
-async function requestPayment(){
+async function requestPayment(id){
 
-  let s = getState();
+  let all = getAll();
+  let t = all.find(x => x.worker === user && x.taskId === id);
 
-  const msg = `PAY:${s.taskId}:${user}:${s.proof}:${Date.now()}`;
+  const msg = `PAY:${id}:${user}:${t.proof}:${Date.now()}`;
   const sig = await signer.signMessage(msg);
 
-  s.paySig = sig;
-  s.status = "pending_payment";
+  t.paySig = sig;
+  t.status = "pending_payment";
 
-  saveState(s);
+  saveAll(all);
   render();
 }
 
@@ -147,7 +158,9 @@ async function requestPayment(){
 ====================== */
 function render(){
 
-  let s = getState();
+  let all = getAll();
+  let myTask = all.find(x => x.worker === user);
+
   let html = "";
 
   TASKS.forEach(t => {
@@ -156,30 +169,30 @@ function render(){
       <b>${t.name}</b><br>
       Reward: ${t.reward} ETH<br>`;
 
-    // no task selected
-    if(!s.taskId){
+    // 🔹 NOT SELECTED YET
+    if(!myTask){
       html += `<button onclick="selectTask(${t.id})">Select</button>`;
     }
 
-    // selected task
-    if(s.taskId === t.id && s.worker === user){
+    // 🔹 MY TASK ONLY
+    if(myTask && myTask.taskId === t.id){
 
-      html += `<br>✅ Selected<br>Status: ${s.status}<br>`;
+      html += `<br>✅ Your Task<br>Status: ${myTask.status}<br>`;
 
-      if(s.status === "selected"){
+      if(myTask.status === "selected"){
         html += `
-          <input type="file" id="proof">
-          <button onclick="uploadProof()">Upload Proof</button>
+          <input type="file" id="file-${t.id}">
+          <button onclick="uploadProof(${t.id})">Upload Proof</button>
         `;
       }
 
-      if(s.status === "submitted"){
+      if(myTask.status === "submitted"){
         html += `
-          <button onclick="requestPayment()">Request Payment</button>
+          <button onclick="requestPayment(${t.id})">Request Payment</button>
         `;
       }
 
-      if(s.status === "pending_payment"){
+      if(myTask.status === "pending_payment"){
         html += `<br>💰 Waiting payment`;
       }
     }
