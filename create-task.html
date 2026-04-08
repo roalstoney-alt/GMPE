@@ -40,7 +40,7 @@ let signer, user;
 async function init(){
   await provider.send("eth_requestAccounts", []);
   signer = await provider.getSigner();
-  user = await signer.getAddress();
+  user = (await signer.getAddress()).toLowerCase(); // 🔥 normalize
 
   document.getElementById("wallet").innerText =
     "Wallet: " + user;
@@ -70,7 +70,7 @@ const TASKS = [
 ];
 
 /* ======================
-   STORAGE (MULTI-WORKER)
+   STORAGE
 ====================== */
 function getAll(){
   return JSON.parse(localStorage.getItem("tasksDB") || "[]");
@@ -95,8 +95,9 @@ async function selectTask(id){
 
   let all = getAll();
 
-  // 🔥 one worker = one task
-  let existing = all.find(x => x.worker === user);
+  let existing = all.find(x =>
+    x.worker.toLowerCase() === user
+  );
 
   if(existing){
     alert("You already selected a task");
@@ -108,7 +109,7 @@ async function selectTask(id){
 
   all.push({
     taskId: id,
-    worker: user,
+    worker: user, // already normalized
     status: "selected",
     signature: sig
   });
@@ -123,7 +124,11 @@ async function selectTask(id){
 function uploadProof(id){
 
   let all = getAll();
-  let t = all.find(x => x.worker === user && x.taskId === id);
+
+  let t = all.find(x =>
+    x.worker.toLowerCase() === user &&
+    x.taskId === id
+  );
 
   const file = document.getElementById("file-"+id).files[0];
   if(!file) return alert("Select file");
@@ -141,7 +146,11 @@ function uploadProof(id){
 async function requestPayment(id){
 
   let all = getAll();
-  let t = all.find(x => x.worker === user && x.taskId === id);
+
+  let t = all.find(x =>
+    x.worker.toLowerCase() === user &&
+    x.taskId === id
+  );
 
   const msg = `PAY:${id}:${user}:${t.proof}:${Date.now()}`;
   const sig = await signer.signMessage(msg);
@@ -159,7 +168,10 @@ async function requestPayment(id){
 function render(){
 
   let all = getAll();
-  let myTask = all.find(x => x.worker === user);
+
+  let myTask = all.find(x =>
+    x.worker.toLowerCase() === user
+  );
 
   let html = "";
 
@@ -169,12 +181,12 @@ function render(){
       <b>${t.name}</b><br>
       Reward: ${t.reward} ETH<br>`;
 
-    // 🔹 NOT SELECTED YET
+    // NOT SELECTED
     if(!myTask){
       html += `<button onclick="selectTask(${t.id})">Select</button>`;
     }
 
-    // 🔹 MY TASK ONLY
+    // MY TASK
     if(myTask && myTask.taskId === t.id){
 
       html += `<br>✅ Your Task<br>Status: ${myTask.status}<br>`;
