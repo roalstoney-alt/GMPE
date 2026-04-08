@@ -2,158 +2,158 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Worker Portal</title>
+<title>Observer Panel</title>
 
-<!-- ✅ 正确 ethers（关键） -->
 <script src="https://cdn.jsdelivr.net/npm/ethers@6.10.0/dist/ethers.umd.min.js"></script>
 
 <style>
-body {background:#0b0f14;color:white;font-family:Arial;}
-.container {max-width:600px;margin:auto;padding:20px;}
-.card {background:#141a22;padding:20px;margin-top:20px;border-radius:12px;}
-button {width:100%;padding:10px;margin-top:10px;background:#00d4ff;border:none;}
+body {background:#0f172a;color:white;font-family:Arial;padding:20px;}
+button {background:#00ffae;padding:10px;border:none;border-radius:8px;margin-top:10px;}
+input {width:100%;padding:10px;margin-top:10px;border-radius:8px;border:none;}
+.card {border:1px solid #334155;padding:15px;margin-top:15px;border-radius:10px;}
 </style>
 </head>
-
 <body>
 
-<div class="container">
+<h2>🧾 Observer Task Approval</h2>
 
-<h2>👷 Worker Portal</h2>
+<div id="wallet">❌ Not connected</div>
 
-<div class="card">
-<button onclick="connect()">Connect Wallet</button>
-<div id="wallet"></div>
-</div>
+<hr>
 
-<div class="card">
-<h3>Stake 1 USDT</h3>
-<button onclick="stake()">Stake</button>
-<div id="stakeStatus"></div>
-</div>
+<h3>Load Task Proof</h3>
+<input id="cidInput" placeholder="Paste proof.json URL">
+<button onclick="loadProof()">Load Task</button>
 
-<div class="card">
-<h3>Tasks</h3>
-<button onclick="loadTasks()">Load Tasks</button>
-<div id="tasks"></div>
-</div>
-
-</div>
+<div id="result"></div>
 
 <script>
 
-// ===== 安全检测 =====
-if (typeof ethers === "undefined") {
-  alert("Ethers not loaded!");
-}
-
 // ===== CONFIG =====
-const USDT = "0xC2132D05D31c914a87C6611C10748AaCBdA6C62";
-const SAFE = "0xC8DF3B516616800b2709F66e1bee7520aBAbD4E2";
-const CONTRACT = "0xC93f3483C514a9ba22CdF2240B32734a69Bf17a2";
+const PINATA_GATEWAY = "https://white-urban-sheep-350.mypinata.cloud/ipfs/";
 
-// ===== ABI =====
-const ABI = [
-  "function stakeFund(uint256 amount)",
-  "function tasks(uint256) view returns(address,uint256,uint256,bool)"
-];
+let provider = new ethers.BrowserProvider(window.ethereum);
+let signer = null;
+let user = null;
+let proofData = null;
 
-let provider, signer, user;
+/* ======================
+   CONNECT WALLET
+====================== */
+async function connectWallet(){
+  await provider.send("eth_requestAccounts", []);
+  signer = await provider.getSigner();
+  user = await signer.getAddress();
 
-// ===== CONNECT =====
-async function connect(){
-  try{
-
-    if (typeof window.ethereum === "undefined") {
-      alert("Please open via http://localhost and ensure MetaMask is installed.");
-      return;
-    }
-
-    provider = new ethers.BrowserProvider(window.ethereum);
-
-    await provider.send("eth_requestAccounts", []);
-
-    signer = await provider.getSigner();
-
-    user = await signer.getAddress();
-
-    document.getElementById("wallet").innerText =
-      "Connected: " + user;
-
-  }catch(e){
-    console.error(e);
-    alert("Connect error: " + e.message);
-  }
+  document.getElementById("wallet").innerHTML =
+    "✅ Observer: " + user;
 }
 
-// ===== STAKE =====
-async function stake(){
-  try{
+/* ======================
+   LOAD PROOF (ANYONE CAN)
+====================== */
+async function loadProof(){
 
-    if(!signer){
-      alert("Connect wallet first");
-      return;
-    }
+  const url = document.getElementById("cidInput").value;
 
-    const token = new ethers.Contract(
-      USDT,
-      ["function transfer(address,uint256) returns(bool)"],
-      signer
-    );
+  if(!url) return alert("Paste CID");
 
-    let amount = ethers.parseUnits("1",6);
+  const res = await fetch(url);
+  const data = await res.json();
 
-    document.getElementById("stakeStatus").innerText = "Sending USDT...";
+  proofData = data;
 
-    let tx = await token.transfer(SAFE, amount);
-    await tx.wait();
+  // verify worker signature
+  const message = JSON.stringify({
+    taskId: data.taskId,
+    worker: data.worker,
+    proofFile: data.proofFile,
+    timestamp: data.timestamp
+  });
 
-    document.getElementById("stakeStatus").innerText = "Recording stake...";
+  const recovered = ethers.verifyMessage(message, data.signature);
 
-    const contract = new ethers.Contract(CONTRACT, ABI, signer);
+  const valid = recovered.toLowerCase() === data.worker.toLowerCase();
 
-    let tx2 = await contract.stakeFund(amount);
-    await tx2.wait();
+  document.getElementById("result").innerHTML = `
+    <div class="card">
+      <b>Task:</b> ${data.taskId}<br>
+      <b>Worker:</b> ${data.worker}<br>
 
-    document.getElementById("stakeStatus").innerText = "✅ Stake success";
+      ${valid ? "✅ Worker verified" : "❌ Invalid proof"}
 
-  }catch(e){
-    console.error(e);
-    document.getElementById("stakeStatus").innerText =
-      "❌ " + e.message;
-  }
+      <h4>Proof:</h4>
+      ${renderProof(data.proofFile)}
+
+      ${valid ? `
+        <button onclick="connectWallet()">Connect Wallet</button>
+        <button onclick="approve()">Approve (Sign)</button>
+      ` : ""}
+    </div>
+  `;
 }
 
-// ===== LOAD TASK =====
-async function loadTasks(){
-  try{
+/* ======================
+   APPROVE (SIGN ONLY)
+====================== */
+async function approve(){
 
-    const contract = new ethers.Contract(CONTRACT, ABI, provider);
-
-    let html = "";
-
-    for(let i=0;i<10;i++){
-      try{
-        let t = await contract.tasks(i);
-
-        html += `
-        <div style="margin-bottom:10px;">
-        Task #${i}<br>
-        Worker: ${t[0].slice(0,6)}...<br>
-        Reward: ${Number(ethers.formatUnits(t[1],6))} USDT<br>
-        Approvals: ${t[2]}<br>
-        Executable: ${t[3] ? "✅ YES" : "❌ NO"}<br>
-        </div>`;
-      }catch{}
-    }
-
-    document.getElementById("tasks").innerHTML = html;
-
-  }catch(e){
-    console.error(e);
-    document.getElementById("tasks").innerText =
-      "❌ " + e.message;
+  if(!signer){
+    alert("Connect wallet first");
+    return;
   }
+
+  const review = {
+    ...proofData,
+    observer: user,
+    approved: true
+  };
+
+  const message = JSON.stringify(review);
+
+  const observerSig = await signer.signMessage(message);
+
+  review.observerSig = observerSig;
+
+  // upload review.json to IPFS
+  const res = await fetch("https://api.pinata.cloud/pinning/pinJSONToIPFS",{
+    method:"POST",
+    headers:{
+      "Content-Type":"application/json",
+      Authorization:`Bearer YOUR_PINATA_JWT`
+    },
+    body: JSON.stringify({
+      pinataContent: review
+    })
+  });
+
+  const data = await res.json();
+
+  const url = PINATA_GATEWAY + data.IpfsHash;
+
+  document.getElementById("result").innerHTML += `
+    <br><br>✅ Approved<br>
+    <b>Review Link:</b><br>
+    <a href="${url}" target="_blank">${url}</a>
+  `;
+}
+
+/* ======================
+   RENDER MEDIA
+====================== */
+function renderProof(url){
+
+  if(url.endsWith(".mp4")){
+    return `<video controls width="100%">
+              <source src="${url}">
+            </video>`;
+  }
+
+  if(url.match(/\.(jpg|png|jpeg|gif)$/)){
+    return `<img src="${url}" width="100%">`;
+  }
+
+  return `<a href="${url}" target="_blank">Open File</a>`;
 }
 
 </script>
