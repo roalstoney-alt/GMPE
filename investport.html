@@ -263,7 +263,7 @@ function renderHistory(){
   document.getElementById("history").innerHTML =
     history.map(h => `
       <div style="margin-bottom:12px;">
-        <b>${h.amount} USDT</b><br>
+        <b>${h.amount} Pol</b><br>
         <small>${h.user.slice(0,6)}...${h.user.slice(-4)}</small><br>
         <a href="https://polygonscan.com/tx/${h.hash}" target="_blank">
           View TX
