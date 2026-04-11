@@ -63,7 +63,7 @@ input {
 <div class="card">
 <h3>🔍 Load Task by CID</h3>
 
-<input id="cid" placeholder="Enter IPFS CID">
+<input id="cid" placeholder="Enter IPFS CID or full gateway URL">
 <button id="loadBtn">Load Task</button>
 
 <div id="taskInfo"></div>
@@ -93,7 +93,7 @@ async function waitForEthereum() {
 }
 
 // ===== CONFIG =====
-const SAFE = "0xC8DF3B516616800b2709F66e1bee7520aBAbD4E2"; // 如果以后要改成固定收款地址可以改这里
+const SAFE = "0xC8DF3B516616800b2709F66e1bee7520aBAbD4E2"; // 如需改固定收款地址可修改此处
 
 let provider, signer, user, currentTask;
 let isProcessing = false;
@@ -137,13 +137,27 @@ async function checkNetwork(){
   }
 }
 
+// ===== 智能提取 CID（支持完整URL或纯CID）=====
+function extractCID(input) {
+  input = input.trim();
+  if (input.includes('/ipfs/')) {
+    // 提取 /ipfs/ 后面的哈希部分
+    const parts = input.split('/ipfs/');
+    let cid = parts[parts.length - 1].split('/')[0].split('?')[0];
+    return cid;
+  }
+  return input; // 已经是纯 CID
+}
+
 // ===== LOAD TASK =====
 async function loadTask(){
-  const cid = document.getElementById("cid").value.trim();
-  if (!cid) {
-    alert("Please enter IPFS CID");
+  let input = document.getElementById("cid").value.trim();
+  if (!input) {
+    alert("Please enter IPFS CID or full gateway URL");
     return;
   }
+
+  const cid = extractCID(input);
 
   try {
     const url = `https://ipfs.io/ipfs/${cid}`;
@@ -165,7 +179,7 @@ async function loadTask(){
 
   } catch(e){
     console.error("Load Task Error:", e);
-    document.getElementById("taskInfo").innerHTML = `<span style="color:#ff6666;">❌ Failed to load task. Please check CID.</span>`;
+    document.getElementById("taskInfo").innerHTML = `<span style="color:#ff6666;">❌ Failed to load task. Please check CID or URL.</span>`;
   }
 }
 
@@ -191,7 +205,6 @@ async function pay(){
     statusEl.innerText = "Checking network...";
     await checkNetwork();
 
-    const amount = document.getElementById("cid").value; // 仅做演示，实际用 currentTask.reward
     const parsedAmount = ethers.utils.parseEther(String(currentTask.reward));
 
     // 检查余额
@@ -205,7 +218,7 @@ async function pay(){
     statusEl.innerText = "Confirm in MetaMask...";
 
     const tx = await signer.sendTransaction({
-      to: currentTask.worker,        // 直接转给任务的 worker
+      to: currentTask.worker,
       value: parsedAmount
     });
 
