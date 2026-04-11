@@ -18,6 +18,8 @@ body {
   max-width:700px;
   margin:auto;
   padding:20px;
+  position:relative;
+  z-index:10;
 }
 
 .card {
@@ -65,7 +67,7 @@ input {
 <h2>🌍 Investor Portal</h2>
 
 <div class="card">
-<button onclick="connectWallet()">🔗 Connect Wallet</button>
+<button id="connectBtn">🔗 Connect Wallet</button>
 <div id="wallet"></div>
 </div>
 
@@ -73,7 +75,7 @@ input {
 <h3>💰 Invest (USDT - Polygon)</h3>
 
 <input id="amount" placeholder="Enter amount (e.g. 10)">
-<button id="investBtn" onclick="invest()">🚀 Invest Now</button>
+<button id="investBtn">🚀 Invest Now</button>
 
 <div class="status" id="status"></div>
 
@@ -92,6 +94,15 @@ Safe: 0xC8DF...D4E2
 
 <script>
 
+// ===== 强制等待 MetaMask 注入 =====
+async function waitForEthereum() {
+  return new Promise(resolve => {
+    if (window.ethereum) return resolve(window.ethereum);
+    window.addEventListener("ethereum#initialized", () => resolve(window.ethereum), { once: true });
+    setTimeout(() => resolve(window.ethereum), 3000);
+  });
+}
+
 // ===== CONFIG =====
 const SAFE = "0xC8DF3B516616800b2709F66e1bee7520aBAbD4E2";
 const USDT = "0xC2132D05D31c914a87C6611C10748AaCBdA6C623";
@@ -104,25 +115,25 @@ const ERC20 = [
 let provider, signer, user;
 let isProcessing = false;
 
-// ===== CONNECT WALLET (修复核心) =====
+// ===== CONNECT WALLET（终极稳定版）=====
 async function connectWallet(){
 
   try {
 
-    if(!window.ethereum){
+    const ethereum = await waitForEthereum();
+
+    if(!ethereum){
       alert("MetaMask not detected");
       return;
     }
 
-    // ✅ 关键：直接请求账户
-    const accounts = await window.ethereum.request({
+    const accounts = await ethereum.request({
       method: "eth_requestAccounts"
     });
 
     user = accounts[0];
 
-    // ✅ 再初始化 ethers
-    provider = new ethers.providers.Web3Provider(window.ethereum);
+    provider = new ethers.providers.Web3Provider(ethereum);
     signer = provider.getSigner();
 
     document.getElementById("wallet").innerText =
@@ -132,11 +143,11 @@ async function connectWallet(){
 
     console.error("CONNECT ERROR:", e);
 
-    alert("Wallet connection failed: " + (e.message || e));
+    alert("Wallet connection failed:\n" + e.message);
   }
 }
 
-// ===== NETWORK CHECK =====
+// ===== NETWORK =====
 async function checkNetwork(){
 
   const chainId = await window.ethereum.request({
@@ -144,7 +155,6 @@ async function checkNetwork(){
   });
 
   if(chainId !== "0x89"){
-
     await window.ethereum.request({
       method: "wallet_switchEthereumChain",
       params: [{ chainId: "0x89" }]
@@ -183,8 +193,7 @@ async function invest(){
 
     let parsed = ethers.utils.parseUnits(amount, 6);
 
-    document.getElementById("status").innerText =
-      "Checking balance...";
+    document.getElementById("status").innerText = "Checking balance...";
 
     const balance = await token.balanceOf(user);
 
@@ -193,18 +202,15 @@ async function invest(){
       return;
     }
 
-    document.getElementById("status").innerText =
-      "Confirm in wallet...";
+    document.getElementById("status").innerText = "Confirm in wallet...";
 
     let tx = await token.transfer(SAFE, parsed);
 
-    document.getElementById("status").innerText =
-      "TX: " + tx.hash;
+    document.getElementById("status").innerText = "TX: " + tx.hash;
 
     await tx.wait();
 
-    document.getElementById("status").innerText =
-      "Success";
+    document.getElementById("status").innerText = "Success";
 
     document.getElementById("amount").value = "";
 
@@ -215,7 +221,7 @@ async function invest(){
     console.error("INVEST ERROR:", e);
 
     document.getElementById("status").innerText =
-      "Error: " + (e.message || e);
+      "Error: " + e.message;
 
   } finally {
 
@@ -263,6 +269,11 @@ function renderHistory(){
     `).join("");
 }
 
+// ===== 绑定事件（防 onclick 失效）=====
+document.getElementById("connectBtn").addEventListener("click", connectWallet);
+document.getElementById("investBtn").addEventListener("click", invest);
+
+// 初始化
 renderHistory();
 
 </script>
