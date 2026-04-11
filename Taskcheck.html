@@ -83,12 +83,11 @@ input {
 
 </div>
 
-<!-- 稳定 CDN -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js"></script>
 
 <script>
 
-// ===== 等待 MetaMask 注入 =====
+// ===== 等待 MetaMask =====
 async function waitForEthereum() {
   return new Promise(resolve => {
     if (window.ethereum) return resolve(window.ethereum);
@@ -97,7 +96,6 @@ async function waitForEthereum() {
   });
 }
 
-// ===== CONFIG =====
 let provider, signer, user, currentTask;
 let isProcessing = false;
 
@@ -110,10 +108,7 @@ async function connectWallet(){
 
   try {
     const ethereum = await waitForEthereum();
-    if (!ethereum) {
-      alert("MetaMask not detected");
-      return;
-    }
+    if (!ethereum) return alert("MetaMask not detected");
 
     const accounts = await ethereum.request({ method: "eth_requestAccounts" });
     user = accounts[0];
@@ -122,7 +117,6 @@ async function connectWallet(){
     signer = provider.getSigner();
 
     document.getElementById("wallet").innerText = "Connected: " + user;
-
   } catch(e){
     console.error("CONNECT ERROR:", e);
     alert("Wallet connection failed:\n" + e.message);
@@ -140,7 +134,7 @@ async function checkNetwork(){
   }
 }
 
-// ===== 智能提取 CID =====
+// ===== 智能 CID =====
 function extractCID(input) {
   input = input.trim();
   if (input.includes('/ipfs/')) {
@@ -153,10 +147,7 @@ function extractCID(input) {
 // ===== LOAD TASK =====
 async function loadTask(){
   let input = document.getElementById("cid").value.trim();
-  if (!input) {
-    alert("Please enter IPFS CID or full gateway URL");
-    return;
-  }
+  if (!input) return alert("Please enter CID or URL");
 
   const cid = extractCID(input);
 
@@ -170,10 +161,7 @@ async function loadTask(){
     const data = await res.json();
     currentTask = data;
 
-    // 显示任务信息
-    const rewardText = (data.reward !== undefined && data.reward !== null) 
-      ? `${data.reward} POL` 
-      : "Not specified";
+    const rewardText = (data.reward !== undefined && data.reward !== null) ? `${data.reward} POL` : "Not specified";
 
     document.getElementById("taskInfo").innerHTML = `
       <b>${data.title || 'Untitled Task'}</b><br>
@@ -181,23 +169,17 @@ async function loadTask(){
       Reward: ${rewardText}
     `;
 
-    // 自动填充金额（如果任务有 reward）
-    const amountInput = document.getElementById("payAmount");
     if (data.reward !== undefined && data.reward !== null) {
-      amountInput.value = data.reward;
-    } else {
-      amountInput.value = ""; // 清空让用户手动输入
+      document.getElementById("payAmount").value = data.reward;
     }
-
     document.getElementById("payBtn").disabled = false;
 
   } catch(e){
-    console.error("Load Task Error:", e);
-    document.getElementById("taskInfo").innerHTML = `<span style="color:#ff6666;">❌ Failed to load task. Please check CID or URL.</span>`;
+    document.getElementById("taskInfo").innerHTML = `<span style="color:#ff6666;">❌ Failed to load task.</span>`;
   }
 }
 
-// ===== PAY WITH POL =====
+// ===== PAY WITH POL（已加强错误处理 + 显示支付钱包）=====
 async function pay(){
   if (isProcessing) return;
   isProcessing = true;
@@ -207,34 +189,33 @@ async function pay(){
   const amountStr = document.getElementById("payAmount").value.trim();
 
   try {
-    if (!signer) {
-      alert("Please connect wallet first");
-      return;
+    // 防御检查
+    if (!signer || !provider || !user) {
+      throw new Error("Wallet not fully connected. Please reconnect wallet first.");
     }
     if (!currentTask) {
-      alert("Please load task first");
-      return;
+      throw new Error("Please load task first");
     }
     if (!amountStr || parseFloat(amountStr) <= 0) {
-      alert("Please enter a valid POL amount");
-      return;
+      throw new Error("Please enter a valid POL amount");
     }
 
     btn.disabled = true;
-    statusEl.innerText = "Checking network...";
+    statusEl.innerHTML = `Checking POL balance...<br><small>Paying from: ${user.slice(0,6)}...${user.slice(-4)}</small>`;
+
     await checkNetwork();
 
     const parsedAmount = ethers.utils.parseEther(amountStr);
 
     // 检查余额
-    statusEl.innerText = "Checking POL balance...";
+    statusEl.innerHTML = `Checking POL balance...<br><small>Paying from: ${user.slice(0,6)}...${user.slice(-4)}</small>`;
     const balance = await provider.getBalance(user);
+
     if (balance.lt(parsedAmount)) {
-      alert("Insufficient POL balance");
-      return;
+      throw new Error("Insufficient POL balance");
     }
 
-    statusEl.innerText = "Confirm in MetaMask...";
+    statusEl.innerText = `Confirm in MetaMask...\nPaying from: ${user.slice(0,6)}...${user.slice(-4)}`;
 
     const tx = await signer.sendTransaction({
       to: currentTask.worker,
@@ -248,7 +229,7 @@ async function pay(){
 
   } catch(e){
     console.error("PAY ERROR:", e);
-    statusEl.innerText = "❌ " + (e.message || e);
+    statusEl.innerHTML = `❌ ${e.message || e}<br><small>Paying from: ${user ? user.slice(0,6)+"..." : "unknown"}</small>`;
   } finally {
     isProcessing = false;
     btn.disabled = false;
