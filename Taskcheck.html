@@ -72,6 +72,11 @@ input {
 <div class="card">
 <h3>💸 Payment (POL)</h3>
 
+<div style="margin-bottom:10px;">
+  <strong>Amount (POL)</strong>
+  <input id="payAmount" type="number" step="0.0001" placeholder="Enter POL amount (e.g. 10)">
+</div>
+
 <button id="payBtn" disabled>🚀 Pay with POL</button>
 <div id="status"></div>
 </div>
@@ -93,8 +98,6 @@ async function waitForEthereum() {
 }
 
 // ===== CONFIG =====
-const SAFE = "0xC8DF3B516616800b2709F66e1bee7520aBAbD4E2"; // 如需改固定收款地址可修改此处
-
 let provider, signer, user, currentTask;
 let isProcessing = false;
 
@@ -137,16 +140,14 @@ async function checkNetwork(){
   }
 }
 
-// ===== 智能提取 CID（支持完整URL或纯CID）=====
+// ===== 智能提取 CID =====
 function extractCID(input) {
   input = input.trim();
   if (input.includes('/ipfs/')) {
-    // 提取 /ipfs/ 后面的哈希部分
     const parts = input.split('/ipfs/');
-    let cid = parts[parts.length - 1].split('/')[0].split('?')[0];
-    return cid;
+    return parts[parts.length - 1].split('/')[0].split('?')[0];
   }
-  return input; // 已经是纯 CID
+  return input;
 }
 
 // ===== LOAD TASK =====
@@ -169,11 +170,24 @@ async function loadTask(){
     const data = await res.json();
     currentTask = data;
 
+    // 显示任务信息
+    const rewardText = (data.reward !== undefined && data.reward !== null) 
+      ? `${data.reward} POL` 
+      : "Not specified";
+
     document.getElementById("taskInfo").innerHTML = `
       <b>${data.title || 'Untitled Task'}</b><br>
       Worker: ${data.worker}<br>
-      Reward: ${data.reward} POL
+      Reward: ${rewardText}
     `;
+
+    // 自动填充金额（如果任务有 reward）
+    const amountInput = document.getElementById("payAmount");
+    if (data.reward !== undefined && data.reward !== null) {
+      amountInput.value = data.reward;
+    } else {
+      amountInput.value = ""; // 清空让用户手动输入
+    }
 
     document.getElementById("payBtn").disabled = false;
 
@@ -190,6 +204,7 @@ async function pay(){
 
   const btn = document.getElementById("payBtn");
   const statusEl = document.getElementById("status");
+  const amountStr = document.getElementById("payAmount").value.trim();
 
   try {
     if (!signer) {
@@ -200,12 +215,16 @@ async function pay(){
       alert("Please load task first");
       return;
     }
+    if (!amountStr || parseFloat(amountStr) <= 0) {
+      alert("Please enter a valid POL amount");
+      return;
+    }
 
     btn.disabled = true;
     statusEl.innerText = "Checking network...";
     await checkNetwork();
 
-    const parsedAmount = ethers.utils.parseEther(String(currentTask.reward));
+    const parsedAmount = ethers.utils.parseEther(amountStr);
 
     // 检查余额
     statusEl.innerText = "Checking POL balance...";
