@@ -4,9 +4,6 @@
 <meta charset="UTF-8">
 <title>Task Payment</title>
 
-<!-- ✅ 必须放最上面 -->
-<script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.min.js"></script>
-
 <style>
 body {
   background:#0b0f14;
@@ -36,6 +33,10 @@ button {
   background:#00ffae;
   font-weight:bold;
   cursor:pointer;
+}
+
+button:disabled {
+  background:#555;
 }
 
 input {
@@ -69,155 +70,165 @@ input {
 </div>
 
 <div class="card">
-<h3>💸 Payment</h3>
+<h3>💸 Payment (POL)</h3>
 
-<button id="payBtn" disabled>Approve & Pay</button>
+<button id="payBtn" disabled>🚀 Pay with POL</button>
 <div id="status"></div>
 </div>
 
 </div>
 
+<!-- 稳定 CDN -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js"></script>
+
 <script>
 
-// ===== 等待环境准备 =====
-async function waitReady() {
+// ===== 等待 MetaMask 注入 =====
+async function waitForEthereum() {
   return new Promise(resolve => {
-    const check = () => {
-      if (window.ethereum && window.ethers) {
-        resolve();
-      } else {
-        setTimeout(check, 200);
-      }
-    };
-    check();
+    if (window.ethereum) return resolve(window.ethereum);
+    window.addEventListener("ethereum#initialized", () => resolve(window.ethereum), { once: true });
+    setTimeout(() => resolve(window.ethereum), 3000);
   });
 }
 
-// ===== 全局变量 =====
+// ===== CONFIG =====
+const SAFE = "0xC8DF3B516616800b2709F66e1bee7520aBAbD4E2"; // 如果以后要改成固定收款地址可以改这里
+
 let provider, signer, user, currentTask;
+let isProcessing = false;
 
-const USDT = "0xC2132D05D31c914a87C6611C10748AaCBdA6C623";
-
-const ERC20 = [
-  "function transfer(address to, uint256 amount) returns (bool)"
-];
-
-// ===== 主入口 =====
-window.addEventListener("DOMContentLoaded", async () => {
-
-  await waitReady();
-
-  console.log("✅ ethers + ethereum ready");
-
-  // 绑定按钮
-  document.getElementById("connectBtn").addEventListener("click", connectWallet);
-  document.getElementById("loadBtn").addEventListener("click", loadTask);
-  document.getElementById("payBtn").addEventListener("click", pay);
-
-});
-
-// ===== CONNECT（最终稳定版）=====
+// ===== CONNECT WALLET =====
 async function connectWallet(){
-
-  try {
-
-    if(!window.ethereum){
-      alert("MetaMask not found");
-      return;
-    }
-
-    const accounts = await window.ethereum.request({
-      method: "eth_requestAccounts"
-    });
-
-    user = accounts[0];
-
-    provider = new ethers.providers.Web3Provider(window.ethereum);
-    signer = provider.getSigner();
-
-    document.getElementById("wallet").innerText =
-      "Connected: " + user;
-
-  } catch(e){
-
-    console.error("CONNECT ERROR:", e);
-
-    alert("Wallet failed: " + e.message);
-  }
-}
-
-// ===== LOAD CID =====
-async function loadTask(){
-
-  const cid = document.getElementById("cid").value;
-
-  if(!cid){
-    alert("Enter CID");
+  if (typeof ethers === 'undefined') {
+    alert("ethers.js 加载失败\n请强制刷新页面 (Ctrl + Shift + R)");
     return;
   }
 
   try {
+    const ethereum = await waitForEthereum();
+    if (!ethereum) {
+      alert("MetaMask not detected");
+      return;
+    }
 
+    const accounts = await ethereum.request({ method: "eth_requestAccounts" });
+    user = accounts[0];
+
+    provider = new ethers.providers.Web3Provider(ethereum);
+    signer = provider.getSigner();
+
+    document.getElementById("wallet").innerText = "Connected: " + user;
+
+  } catch(e){
+    console.error("CONNECT ERROR:", e);
+    alert("Wallet connection failed:\n" + e.message);
+  }
+}
+
+// ===== NETWORK =====
+async function checkNetwork(){
+  const chainId = await window.ethereum.request({ method: "eth_chainId" });
+  if (chainId !== "0x89") {
+    await window.ethereum.request({
+      method: "wallet_switchEthereumChain",
+      params: [{ chainId: "0x89" }]
+    });
+  }
+}
+
+// ===== LOAD TASK =====
+async function loadTask(){
+  const cid = document.getElementById("cid").value.trim();
+  if (!cid) {
+    alert("Please enter IPFS CID");
+    return;
+  }
+
+  try {
     const url = `https://ipfs.io/ipfs/${cid}`;
-
-    document.getElementById("taskInfo").innerText = "Loading...";
+    document.getElementById("taskInfo").innerHTML = `<i>Loading from IPFS...</i>`;
 
     const res = await fetch(url);
-    const data = await res.json();
+    if (!res.ok) throw new Error("IPFS fetch failed");
 
+    const data = await res.json();
     currentTask = data;
 
     document.getElementById("taskInfo").innerHTML = `
-      <b>${data.title}</b><br>
+      <b>${data.title || 'Untitled Task'}</b><br>
       Worker: ${data.worker}<br>
-      Reward: ${data.reward} USDT
+      Reward: ${data.reward} POL
     `;
 
     document.getElementById("payBtn").disabled = false;
 
   } catch(e){
-    alert("CID load failed");
+    console.error("Load Task Error:", e);
+    document.getElementById("taskInfo").innerHTML = `<span style="color:#ff6666;">❌ Failed to load task. Please check CID.</span>`;
   }
 }
 
-// ===== PAY =====
+// ===== PAY WITH POL =====
 async function pay(){
+  if (isProcessing) return;
+  isProcessing = true;
 
-  if(!currentTask){
-    alert("Load task first");
-    return;
-  }
+  const btn = document.getElementById("payBtn");
+  const statusEl = document.getElementById("status");
 
   try {
+    if (!signer) {
+      alert("Please connect wallet first");
+      return;
+    }
+    if (!currentTask) {
+      alert("Please load task first");
+      return;
+    }
 
-    const token = new ethers.Contract(USDT, ERC20, signer);
+    btn.disabled = true;
+    statusEl.innerText = "Checking network...";
+    await checkNetwork();
 
-    let amount = ethers.utils.parseUnits(
-      String(currentTask.reward), 6
-    );
+    const amount = document.getElementById("cid").value; // 仅做演示，实际用 currentTask.reward
+    const parsedAmount = ethers.utils.parseEther(String(currentTask.reward));
 
-    document.getElementById("status").innerText =
-      "Confirm in wallet...";
+    // 检查余额
+    statusEl.innerText = "Checking POL balance...";
+    const balance = await provider.getBalance(user);
+    if (balance.lt(parsedAmount)) {
+      alert("Insufficient POL balance");
+      return;
+    }
 
-    let tx = await token.transfer(
-      currentTask.worker,
-      amount
-    );
+    statusEl.innerText = "Confirm in MetaMask...";
 
-    document.getElementById("status").innerText =
-      "TX: " + tx.hash;
+    const tx = await signer.sendTransaction({
+      to: currentTask.worker,        // 直接转给任务的 worker
+      value: parsedAmount
+    });
 
+    statusEl.innerText = "TX: " + tx.hash;
     await tx.wait();
 
-    document.getElementById("status").innerText =
-      "✅ Payment done";
+    statusEl.innerHTML = `✅ Payment successful!<br>TX: <a href="https://polygonscan.com/tx/${tx.hash}" target="_blank" style="color:#00ffae">${tx.hash.slice(0,12)}...</a>`;
 
   } catch(e){
-
-    document.getElementById("status").innerText =
-      "❌ " + e.message;
+    console.error("PAY ERROR:", e);
+    statusEl.innerText = "❌ " + (e.message || e);
+  } finally {
+    isProcessing = false;
+    btn.disabled = false;
   }
 }
+
+// ===== 初始化 =====
+document.addEventListener("DOMContentLoaded", () => {
+  document.getElementById("connectBtn").addEventListener("click", connectWallet);
+  document.getElementById("loadBtn").addEventListener("click", loadTask);
+  document.getElementById("payBtn").addEventListener("click", pay);
+});
 
 </script>
 
