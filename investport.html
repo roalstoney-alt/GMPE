@@ -4,7 +4,8 @@
 <meta charset="UTF-8">
 <title>Investor Portal</title>
 
-<script src="https://cdn.jsdelivr.net/npm/ethers@6.7.0/dist/ethers.min.js"></script>
+<!-- ✅ 使用稳定版 ethers v5 -->
+<script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.min.js"></script>
 
 <style>
 body {
@@ -116,7 +117,7 @@ const SAFE = "0xC8DF3B516616800b2709F66e1bee7520aBAbD4E2";
 // ✅ 正确 Polygon USDT
 const USDT = "0xC2132D05D31c914a87C6611C10748AaCBdA6C623";
 
-// ERC20 ABI（最小）
+// ERC20 ABI
 const ERC20 = [
   "function transfer(address to, uint256 amount) returns (bool)",
   "function balanceOf(address account) view returns (uint256)"
@@ -126,23 +127,36 @@ const ERC20 = [
 let provider, signer, user;
 let isProcessing = false;
 
+// ===== 页面加载检测 =====
+window.addEventListener("load", () => {
+  console.log("DApp loaded");
+  console.log("Ethereum object:", window.ethereum);
+});
+
 // ===== 连接钱包 =====
 async function connectWallet(){
 
-  if(!window.ethereum){
-    alert("Please install MetaMask");
-    return;
+  try {
+
+    if(typeof window.ethereum === "undefined"){
+      alert("Please install MetaMask");
+      return;
+    }
+
+    provider = new ethers.providers.Web3Provider(window.ethereum);
+
+    await provider.send("eth_requestAccounts", []);
+
+    signer = provider.getSigner();
+    user = await signer.getAddress();
+
+    document.getElementById("wallet").innerText =
+      "Connected: " + user;
+
+  } catch(e){
+    console.error(e);
+    alert("Wallet connection failed");
   }
-
-  provider = new ethers.BrowserProvider(window.ethereum);
-
-  await provider.send("eth_requestAccounts", []);
-
-  signer = await provider.getSigner();
-  user = await signer.getAddress();
-
-  document.getElementById("wallet").innerText =
-    "Connected: " + user;
 }
 
 // ===== 网络检查 + 自动切换 =====
@@ -150,7 +164,8 @@ async function checkNetwork(){
 
   const network = await provider.getNetwork();
 
-  if(network.chainId !== 137n){
+  if(network.chainId !== 137){
+
     await window.ethereum.request({
       method: "wallet_switchEthereumChain",
       params: [{ chainId: "0x89" }]
@@ -191,15 +206,14 @@ async function invest(){
       signer
     );
 
-    let parsed = ethers.parseUnits(amount, 6);
+    let parsed = ethers.utils.parseUnits(amount, 6);
 
     document.getElementById("status").innerText =
       "🔍 Checking balance...";
 
-    // ✅ 余额检测
     const balance = await token.balanceOf(user);
 
-    if(balance < parsed){
+    if(balance.lt(parsed)){
       alert("Insufficient USDT balance");
       return;
     }
@@ -207,7 +221,6 @@ async function invest(){
     document.getElementById("status").innerText =
       "✍️ Confirm in wallet...";
 
-    // ✅ 转账
     let tx = await token.transfer(SAFE, parsed);
 
     document.getElementById("status").innerText =
@@ -218,10 +231,8 @@ async function invest(){
     document.getElementById("status").innerText =
       "✅ Investment confirmed";
 
-    // 清空输入
     document.getElementById("amount").value = "";
 
-    // 本地记录
     addHistory(user, amount, tx.hash);
 
   } catch(e){
@@ -232,6 +243,7 @@ async function invest(){
       "❌ " + (e.reason || e.message);
 
   } finally {
+
     isProcessing = false;
     btn.disabled = false;
     btn.innerText = "🚀 Invest Now";
