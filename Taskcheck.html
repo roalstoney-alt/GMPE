@@ -1,19 +1,49 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Investor Panel (Secure)</title>
+<title>Task Payment</title>
 
-<script src="https://cdn.jsdelivr.net/npm/ethers@6.10.0/dist/ethers.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.min.js"></script>
 
 <style>
-body {background:#0f172a;color:white;font-family:Arial;}
-.container {max-width:800px;margin:auto;padding:20px;}
-.card {border:1px solid #334155;padding:15px;margin-top:15px;border-radius:10px;}
-button {padding:10px;margin-top:10px;background:#00ffae;border:none;border-radius:8px;}
-input {width:100%;padding:10px;margin-top:10px;border-radius:8px;border:none;}
-.valid {color:#00ffae;}
-.invalid {color:red;}
+body {
+  background:#0b0f14;
+  color:white;
+  font-family:Arial;
+}
+
+.container {
+  max-width:700px;
+  margin:auto;
+  padding:20px;
+}
+
+.card {
+  background:#141a22;
+  padding:20px;
+  border-radius:12px;
+  margin-top:20px;
+}
+
+button {
+  width:100%;
+  padding:12px;
+  margin-top:10px;
+  border:none;
+  border-radius:10px;
+  background:#00ffae;
+  font-weight:bold;
+  cursor:pointer;
+}
+
+input {
+  width:100%;
+  padding:10px;
+  margin-top:10px;
+  border-radius:8px;
+  border:none;
+}
 </style>
 </head>
 
@@ -21,171 +51,136 @@ input {width:100%;padding:10px;margin-top:10px;border-radius:8px;border:none;}
 
 <div class="container">
 
-<h2>💰 Investor Panel (Observer Verified)</h2>
+<h2>🧾 Task Payment (Owner / Investor)</h2>
 
+<div class="card">
+<button onclick="connect()">🔗 Connect Wallet</button>
 <div id="wallet"></div>
-<div id="balance"></div>
+</div>
 
-<hr>
+<div class="card">
+<h3>🔍 Load Task by CID</h3>
 
-<h3>Load Reviewed Task</h3>
-<input id="cidInput" placeholder="Paste review.json URL">
-<button onclick="loadReview()">Load & Verify</button>
+<input id="cid" placeholder="Enter IPFS CID">
 
-<div id="result"></div>
+<button onclick="loadTask()">Load Task</button>
+
+<div id="taskInfo"></div>
+</div>
+
+<div class="card">
+<h3>💸 Payment</h3>
+
+<button id="payBtn" onclick="pay()" disabled>
+Approve & Pay Worker
+</button>
+
+<div id="status"></div>
+</div>
 
 </div>
 
 <script>
 
 // ===== CONFIG =====
-const CONTRACT = "0x6881Ad624D23bDC3e21b3B6dafD49C3E7f61BB4C";
-const OWNER = "0xbf4c5Cd7eE0af3E1eeAf15c1542e1f3046a6C839";
+const USDT = "0xC2132D05D31c914a87C6611C10748AaCBdA6C623";
 
-const ABI = [
-  "function withdraw(address payable to,uint256 amount)",
-  "function getBalance() view returns(uint256)"
+const ERC20 = [
+  "function transfer(address to, uint256 amount) returns (bool)"
 ];
 
-let provider = new ethers.BrowserProvider(window.ethereum);
-let signer, user, reviewData;
+let provider, signer, user;
+let currentTask = null;
 
-/* ===== INIT ===== */
-async function init(){
-  await provider.send("eth_requestAccounts", []);
-  signer = await provider.getSigner();
-  user = await signer.getAddress();
+// ===== CONNECT =====
+async function connect(){
 
-  document.getElementById("wallet").innerText = "Wallet: " + user;
+  const accounts = await window.ethereum.request({
+    method: "eth_requestAccounts"
+  });
 
-  loadBalance();
+  user = accounts[0];
+
+  provider = new ethers.providers.Web3Provider(window.ethereum);
+  signer = provider.getSigner();
+
+  document.getElementById("wallet").innerText =
+    "Connected: " + user;
 }
 
-/* ===== LOAD BALANCE ===== */
-async function loadBalance(){
-  const c = new ethers.Contract(CONTRACT, ABI, provider);
-  const b = await c.getBalance();
+// ===== LOAD CID =====
+async function loadTask(){
 
-  document.getElementById("balance").innerText =
-    "Contract Balance: " + ethers.formatEther(b) + " POL";
-}
+  const cid = document.getElementById("cid").value;
 
-/* ===== LOAD REVIEW.JSON ===== */
-async function loadReview(){
+  if(!cid){
+    alert("Enter CID");
+    return;
+  }
 
-  const url = document.getElementById("cidInput").value;
-  if(!url) return alert("Paste review.json URL");
+  try {
 
-  try{
+    const url = `https://ipfs.io/ipfs/${cid}`;
+
+    document.getElementById("taskInfo").innerText =
+      "Loading...";
 
     const res = await fetch(url);
     const data = await res.json();
 
-    reviewData = data;
+    currentTask = data;
 
-    // ===== 1. VERIFY WORKER =====
-    const workerMsg = JSON.stringify({
-      taskId: data.taskId,
-      worker: data.worker,
-      proofFile: data.proofFile,
-      timestamp: data.timestamp
-    });
-
-    const workerRecovered = ethers.verifyMessage(workerMsg, data.signature);
-
-    const workerValid =
-      workerRecovered.toLowerCase() === data.worker.toLowerCase();
-
-    // ===== 2. VERIFY OBSERVER =====
-    const observerMsg = JSON.stringify({
-      ...data,
-      observerSig: undefined // exclude sig itself
-    });
-
-    const observerRecovered = ethers.verifyMessage(observerMsg, data.observerSig);
-
-    const observerValid =
-      observerRecovered.toLowerCase() === data.observer.toLowerCase();
-
-    // ===== RESULT =====
-    let statusHTML = `
-      Worker: ${workerValid ? "✅ valid" : "❌ invalid"}<br>
-      Observer: ${observerValid ? "✅ valid" : "❌ invalid"}
+    document.getElementById("taskInfo").innerHTML = `
+      <b>Task:</b> ${data.title}<br>
+      <b>Worker:</b> ${data.worker}<br>
+      <b>Reward:</b> ${data.reward} USDT
     `;
 
-    const canPay = workerValid && observerValid;
+    document.getElementById("payBtn").disabled = false;
 
-    document.getElementById("result").innerHTML = `
-      <div class="card">
-        <b>Task:</b> ${data.taskId}<br>
-        <b>Worker:</b> ${data.worker}<br>
-        <b>Observer:</b> ${data.observer}<br>
-
-        ${statusHTML}
-
-        <h4>Proof:</h4>
-        ${renderProof(data.proofFile)}
-
-        ${canPay ? `<button onclick="pay()">Approve & Pay</button>` : "<br>❌ Not eligible for payment"}
-      </div>
-    `;
-
-  }catch(e){
-    console.error(e);
-    alert("Failed to load review");
+  } catch(e){
+    alert("CID load failed");
   }
 }
 
-/* ===== PAY ===== */
+// ===== PAY =====
 async function pay(){
 
-  if(user.toLowerCase() !== OWNER.toLowerCase()){
-    alert("Only owner can pay");
+  if(!currentTask){
+    alert("Load task first");
     return;
   }
 
-  try{
+  try {
 
-    const c = new ethers.Contract(CONTRACT, ABI, signer);
+    const token = new ethers.Contract(USDT, ERC20, signer);
 
-    let amount;
+    let amount = ethers.utils.parseUnits(
+      String(currentTask.reward), 6
+    );
 
-    if(reviewData.taskId == 1) amount = "0.01";
-    if(reviewData.taskId == 2) amount = "0.02";
-    if(reviewData.taskId == 3) amount = "0.03";
+    document.getElementById("status").innerText =
+      "Confirm in wallet...";
 
-    const value = ethers.parseEther(amount);
+    let tx = await token.transfer(
+      currentTask.worker,
+      amount
+    );
 
-    document.getElementById("result").innerHTML += "<br>⏳ Paying...";
+    document.getElementById("status").innerText =
+      "TX: " + tx.hash;
 
-    const tx = await c.withdraw(reviewData.worker, value);
     await tx.wait();
 
-    document.getElementById("result").innerHTML += "<br>✅ Payment sent";
+    document.getElementById("status").innerText =
+      "✅ Payment completed";
 
-  }catch(e){
-    console.error(e);
-    alert(e.reason || e.message);
+  } catch(e){
+
+    document.getElementById("status").innerText =
+      "❌ " + e.message;
   }
 }
-
-/* ===== RENDER ===== */
-function renderProof(url){
-
-  if(url.endsWith(".mp4")){
-    return `<video controls width="100%">
-              <source src="${url}">
-            </video>`;
-  }
-
-  if(url.match(/\.(jpg|png|jpeg|gif)$/)){
-    return `<img src="${url}" width="100%">`;
-  }
-
-  return `<a href="${url}" target="_blank">Open File</a>`;
-}
-
-init();
 
 </script>
 
