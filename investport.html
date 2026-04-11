@@ -4,7 +4,6 @@
 <meta charset="UTF-8">
 <title>Investor Portal</title>
 
-<!-- ✅ 使用稳定版 ethers v5 -->
 <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.min.js"></script>
 
 <style>
@@ -41,7 +40,6 @@ button {
 
 button:disabled {
   background:#555;
-  cursor:not-allowed;
 }
 
 input {
@@ -56,11 +54,6 @@ input {
   margin-top:10px;
   font-size:14px;
   color:#aaa;
-}
-
-.warning {
-  color:#ff7675;
-  font-size:13px;
 }
 </style>
 </head>
@@ -80,18 +73,12 @@ input {
 <h3>💰 Invest (USDT - Polygon)</h3>
 
 <input id="amount" placeholder="Enter amount (e.g. 10)">
-
 <button id="investBtn" onclick="invest()">🚀 Invest Now</button>
 
 <div class="status" id="status"></div>
 
-<div class="warning">
-⚠️ Only official USDT (Polygon) is accepted.<br>
-Funds go directly to secure multisig Safe.
-</div>
-
-<p style="font-size:12px; color:#888;">
-Safe Wallet: 0xC8DF...D4E2
+<p style="font-size:12px;color:#888;">
+Safe: 0xC8DF...D4E2
 </p>
 
 </div>
@@ -101,70 +88,62 @@ Safe Wallet: 0xC8DF...D4E2
 <div id="history">No records yet</div>
 </div>
 
-<div class="card">
-<h3>🔐 Escrow Info</h3>
-<p>Funds are stored in a multisig Safe.</p>
-<p>No single party can move funds.</p>
-</div>
-
 </div>
 
 <script>
 
-// ===== 配置 =====
+// ===== CONFIG =====
 const SAFE = "0xC8DF3B516616800b2709F66e1bee7520aBAbD4E2";
-
-// ✅ 正确 Polygon USDT
 const USDT = "0xC2132D05D31c914a87C6611C10748AaCBdA6C623";
 
-// ERC20 ABI
 const ERC20 = [
   "function transfer(address to, uint256 amount) returns (bool)",
   "function balanceOf(address account) view returns (uint256)"
 ];
 
-// ===== 状态 =====
 let provider, signer, user;
 let isProcessing = false;
 
-// ===== 页面加载检测 =====
-window.addEventListener("load", () => {
-  console.log("DApp loaded");
-  console.log("Ethereum object:", window.ethereum);
-});
-
-// ===== 连接钱包 =====
+// ===== CONNECT WALLET (修复核心) =====
 async function connectWallet(){
 
   try {
 
-    if(typeof window.ethereum === "undefined"){
-      alert("Please install MetaMask");
+    if(!window.ethereum){
+      alert("MetaMask not detected");
       return;
     }
 
+    // ✅ 关键：直接请求账户
+    const accounts = await window.ethereum.request({
+      method: "eth_requestAccounts"
+    });
+
+    user = accounts[0];
+
+    // ✅ 再初始化 ethers
     provider = new ethers.providers.Web3Provider(window.ethereum);
-
-    await provider.send("eth_requestAccounts", []);
-
     signer = provider.getSigner();
-    user = await signer.getAddress();
 
     document.getElementById("wallet").innerText =
       "Connected: " + user;
 
   } catch(e){
-    console.error(e);
-    alert("Wallet connection failed");
+
+    console.error("CONNECT ERROR:", e);
+
+    alert("Wallet connection failed: " + (e.message || e));
   }
 }
 
-// ===== 网络检查 + 自动切换 =====
+// ===== NETWORK CHECK =====
 async function checkNetwork(){
 
-  const network = await provider.getNetwork();
+  const chainId = await window.ethereum.request({
+    method: "eth_chainId"
+  });
 
-  if(network.chainId !== 137){
+  if(chainId !== "0x89"){
 
     await window.ethereum.request({
       method: "wallet_switchEthereumChain",
@@ -173,7 +152,7 @@ async function checkNetwork(){
   }
 }
 
-// ===== 投资 =====
+// ===== INVEST =====
 async function invest(){
 
   if(isProcessing) return;
@@ -200,36 +179,32 @@ async function invest(){
     btn.disabled = true;
     btn.innerText = "Processing...";
 
-    const token = new ethers.Contract(
-      USDT,
-      ERC20,
-      signer
-    );
+    const token = new ethers.Contract(USDT, ERC20, signer);
 
     let parsed = ethers.utils.parseUnits(amount, 6);
 
     document.getElementById("status").innerText =
-      "🔍 Checking balance...";
+      "Checking balance...";
 
     const balance = await token.balanceOf(user);
 
     if(balance.lt(parsed)){
-      alert("Insufficient USDT balance");
+      alert("Insufficient USDT");
       return;
     }
 
     document.getElementById("status").innerText =
-      "✍️ Confirm in wallet...";
+      "Confirm in wallet...";
 
     let tx = await token.transfer(SAFE, parsed);
 
     document.getElementById("status").innerText =
-      "⛓ TX sent: " + tx.hash;
+      "TX: " + tx.hash;
 
     await tx.wait();
 
     document.getElementById("status").innerText =
-      "✅ Investment confirmed";
+      "Success";
 
     document.getElementById("amount").value = "";
 
@@ -237,10 +212,10 @@ async function invest(){
 
   } catch(e){
 
-    console.error(e);
+    console.error("INVEST ERROR:", e);
 
     document.getElementById("status").innerText =
-      "❌ " + (e.reason || e.message);
+      "Error: " + (e.message || e);
 
   } finally {
 
@@ -250,7 +225,7 @@ async function invest(){
   }
 }
 
-// ===== 本地记录 =====
+// ===== HISTORY =====
 function addHistory(user, amount, hash){
 
   let history = JSON.parse(localStorage.getItem("investments") || "[]");
@@ -267,7 +242,6 @@ function addHistory(user, amount, hash){
   renderHistory();
 }
 
-// ===== 渲染历史 =====
 function renderHistory(){
 
   let history = JSON.parse(localStorage.getItem("investments") || "[]");
@@ -282,15 +256,13 @@ function renderHistory(){
       <div style="margin-bottom:12px;">
         <b>${h.amount} USDT</b><br>
         <small>${h.user.slice(0,6)}...${h.user.slice(-4)}</small><br>
-        <small>${h.time}</small><br>
         <a href="https://polygonscan.com/tx/${h.hash}" target="_blank">
-          View on-chain
+          View TX
         </a>
       </div>
     `).join("");
 }
 
-// 初始化
 renderHistory();
 
 </script>
