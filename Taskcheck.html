@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <title>Task Payment</title>
 
+<!-- ✅ 必须放最上面 -->
 <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.min.js"></script>
 
 <style>
@@ -51,10 +52,10 @@ input {
 
 <div class="container">
 
-<h2>🧾 Task Payment (Owner / Investor)</h2>
+<h2>🧾 Task Payment</h2>
 
 <div class="card">
-<button onclick="connect()">🔗 Connect Wallet</button>
+<button id="connectBtn">🔗 Connect Wallet</button>
 <div id="wallet"></div>
 </div>
 
@@ -62,8 +63,7 @@ input {
 <h3>🔍 Load Task by CID</h3>
 
 <input id="cid" placeholder="Enter IPFS CID">
-
-<button onclick="loadTask()">Load Task</button>
+<button id="loadBtn">Load Task</button>
 
 <div id="taskInfo"></div>
 </div>
@@ -71,10 +71,7 @@ input {
 <div class="card">
 <h3>💸 Payment</h3>
 
-<button id="payBtn" onclick="pay()" disabled>
-Approve & Pay Worker
-</button>
-
+<button id="payBtn" disabled>Approve & Pay</button>
 <div id="status"></div>
 </div>
 
@@ -82,30 +79,71 @@ Approve & Pay Worker
 
 <script>
 
-// ===== CONFIG =====
+// ===== 等待环境准备 =====
+async function waitReady() {
+  return new Promise(resolve => {
+    const check = () => {
+      if (window.ethereum && window.ethers) {
+        resolve();
+      } else {
+        setTimeout(check, 200);
+      }
+    };
+    check();
+  });
+}
+
+// ===== 全局变量 =====
+let provider, signer, user, currentTask;
+
 const USDT = "0xC2132D05D31c914a87C6611C10748AaCBdA6C623";
 
 const ERC20 = [
   "function transfer(address to, uint256 amount) returns (bool)"
 ];
 
-let provider, signer, user;
-let currentTask = null;
+// ===== 主入口 =====
+window.addEventListener("DOMContentLoaded", async () => {
 
-// ===== CONNECT =====
-async function connect(){
+  await waitReady();
 
-  const accounts = await window.ethereum.request({
-    method: "eth_requestAccounts"
-  });
+  console.log("✅ ethers + ethereum ready");
 
-  user = accounts[0];
+  // 绑定按钮
+  document.getElementById("connectBtn").addEventListener("click", connectWallet);
+  document.getElementById("loadBtn").addEventListener("click", loadTask);
+  document.getElementById("payBtn").addEventListener("click", pay);
 
-  provider = new ethers.providers.Web3Provider(window.ethereum);
-  signer = provider.getSigner();
+});
 
-  document.getElementById("wallet").innerText =
-    "Connected: " + user;
+// ===== CONNECT（最终稳定版）=====
+async function connectWallet(){
+
+  try {
+
+    if(!window.ethereum){
+      alert("MetaMask not found");
+      return;
+    }
+
+    const accounts = await window.ethereum.request({
+      method: "eth_requestAccounts"
+    });
+
+    user = accounts[0];
+
+    provider = new ethers.providers.Web3Provider(window.ethereum);
+    signer = provider.getSigner();
+
+    document.getElementById("wallet").innerText =
+      "Connected: " + user;
+
+  } catch(e){
+
+    console.error("CONNECT ERROR:", e);
+
+    alert("Wallet failed: " + e.message);
+  }
 }
 
 // ===== LOAD CID =====
@@ -122,8 +160,7 @@ async function loadTask(){
 
     const url = `https://ipfs.io/ipfs/${cid}`;
 
-    document.getElementById("taskInfo").innerText =
-      "Loading...";
+    document.getElementById("taskInfo").innerText = "Loading...";
 
     const res = await fetch(url);
     const data = await res.json();
@@ -131,9 +168,9 @@ async function loadTask(){
     currentTask = data;
 
     document.getElementById("taskInfo").innerHTML = `
-      <b>Task:</b> ${data.title}<br>
-      <b>Worker:</b> ${data.worker}<br>
-      <b>Reward:</b> ${data.reward} USDT
+      <b>${data.title}</b><br>
+      Worker: ${data.worker}<br>
+      Reward: ${data.reward} USDT
     `;
 
     document.getElementById("payBtn").disabled = false;
@@ -173,7 +210,7 @@ async function pay(){
     await tx.wait();
 
     document.getElementById("status").innerText =
-      "✅ Payment completed";
+      "✅ Payment done";
 
   } catch(e){
 
